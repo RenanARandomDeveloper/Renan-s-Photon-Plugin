@@ -1,0 +1,16 @@
+{
+  "args0": [
+  ],
+  "inputsInline": true,
+  "previousStatement": null,
+  "nextStatement": null,
+  "colour": "#7dd2ff",
+  "mcreator": {
+    "toolbox_id": "client_fx",
+    "toolbox_init": [
+    ],
+    "required_apis": [
+      "photon_plugin"
+    ]
+  }
+}

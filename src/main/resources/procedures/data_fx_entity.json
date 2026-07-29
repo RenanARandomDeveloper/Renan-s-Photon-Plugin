@@ -1,0 +1,36 @@
+{
+  "args0": [
+    {
+      "type": "input_value",
+      "name": "Entity",
+      "check": "Entity"
+    }
+  ],
+  "inputsInline": true,
+  "output": "Boolean",
+  "colour": "#648c9b",
+  "mutator": "data_entity_mutator",
+  "extensions": [
+    "data_entity_validate_inputs"
+  ],
+  "mcreator": {
+    "toolbox_id": "client_fx",
+    "toolbox_init": [
+      "<value name=\"Entity\"><block type=\"entity_from_deps\"></block></value>"
+    ],
+    "inputs": [
+      "Entity"
+    ],
+    "repeating_fields": [
+      {
+        "name": "Name",
+        "field_definition": {
+          "type": "field_photon_fx_selector"
+        }
+      }
+    ],
+    "required_apis": [
+      "photon_plugin"
+    ]
+  }
+}

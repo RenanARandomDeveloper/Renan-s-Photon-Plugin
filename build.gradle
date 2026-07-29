@@ -1,0 +1,58 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id "java"
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://repo.gradle.org/gradle/libs-releases" }
+    flatDir { dirs mcreator_path + '/lib' }
+}
+
+group = 'net.renan.photon'
+version = new JsonSlurper().parse(file('src/main/resources/plugin.json'))['info']['version']
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+configurations {
+    implementation.extendsFrom export
+}
+
+evaluationDependsOn(':MCreator')
+
+dependencies {
+    implementation project(':MCreator')
+}
+
+afterEvaluate {
+    project(':MCreator').configurations.named("implementation").get().dependencies.each {
+        dependencies.add("implementation", it)
+    }
+}
+
+tasks.jar {
+    archiveFileName.set("renan_photon_plugin-1.0.zip")
+    from {
+        configurations.export.collect { it.isDirectory('C:/Users/Renan/Desktop/') ? it : zipTree(it) }
+    }
+}
+
+tasks.register('runMCreatorWithPlugin', JavaExec) {
+    dependsOn jar
+    environment("MCREATOR_PLUGINS_FOLDER", file("./build/libs"))
+    jvmArgs '--add-opens', 'java.base/java.lang=ALL-UNNAMED'
+    classpath = project(':MCreator').sourceSets.main.runtimeClasspath
+    mainClass.set('net.mcreator.Launcher')
+    workingDir = mcreator_path
+}
+
+subprojects { subproject ->
+    subproject.plugins.withType(JavaPlugin) {
+        test {
+            dependsOn rootProject.jar
+            environment("MCREATOR_PLUGINS_FOLDER", new File(rootProject.projectDir, "/build/libs"))
+            workingDir = mcreator_path
+        }
+    }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "renan_photon_plugin",
+  "supportedversions": [
+    2024003, 2024004, 2025001,
+    2025002, 2025003, 2026001,
+    2026002
+  ],
+  "weight": 7000,
+  "javaplugin": "net.renan.photonplugin.Photon",
+  "info": {
+    "name": "Renan's Photon Plugin",
+    "version": "1.0",
+    "description": "Added Support for Photon to Mcreator",
+    "author": "Renan",
+    "pluginPageID": 120961,
+    "updateJSONURL": "https://raw.githubusercontent.com/RenanARandomDeveloper/Photon-update-file/refs/heads/main/plugin_update.json"
+  }
+}

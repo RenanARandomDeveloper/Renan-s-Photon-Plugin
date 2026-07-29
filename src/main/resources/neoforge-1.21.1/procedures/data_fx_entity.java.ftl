@@ -1,0 +1,1 @@
+CheckFXEntity.check(${input$Entity})<#if field_list$Name?size gt 0>.name("${field_list$Name[0]}")</#if>.send()

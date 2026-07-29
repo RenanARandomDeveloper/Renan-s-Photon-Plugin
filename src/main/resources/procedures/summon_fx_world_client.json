@@ -1,0 +1,71 @@
+{
+  "args0": [
+    {
+      "type": "field_photon_fx_selector",
+      "name": "Name"
+    },
+    {
+      "type": "input_value",
+      "name": "X",
+      "check": "Number"
+    },
+    {
+      "type": "input_value",
+      "name": "Y",
+      "check": "Number"
+    },
+    {
+      "type": "input_value",
+      "name": "Z",
+      "check": "Number"
+    }
+  ],
+  "inputsInline": false,
+  "previousStatement": null,
+  "nextStatement": null,
+  "colour": "#9b8264",
+  "mutator": "summon_block_mutator",
+  "extensions": [
+    "summon_block_validate_inputs"
+  ],
+  "mcreator": {
+    "toolbox_id": "client_fx",
+    "toolbox_init": [
+      "<value name=\"X\"><block type=\"coord_x\"></block></value>",
+      "<value name=\"Y\"><block type=\"coord_y\"></block></value>",
+      "<value name=\"Z\"><block type=\"coord_z\"></block></value>"
+    ],
+    "fields": [
+      "Name"
+    ],
+    "inputs": [
+      "X",
+      "Y",
+      "Z"
+    ],
+    "repeating_inputs": [
+      "OffSetX",
+      "OffSetY",
+      "OffSetZ",
+      "RotationX",
+      "RotationY",
+      "RotationZ",
+      "ScaleX",
+      "ScaleY",
+      "ScaleZ",
+      "Delay",
+      "Death",
+      "Multi",
+      "State"
+    ],
+    "dependencies": [
+      {
+        "name": "world",
+        "type": "world"
+      }
+    ],
+    "required_apis": [
+      "photon_plugin"
+    ]
+  }
+}

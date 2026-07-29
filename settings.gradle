@@ -1,0 +1,3 @@
+rootProject.name = 'Photon'
+include ":MCreator"
+project(":MCreator").projectDir = file(mcreator_path)
