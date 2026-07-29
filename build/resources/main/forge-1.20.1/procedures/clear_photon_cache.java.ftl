@@ -1,1 +1,0 @@
-com.lowdragmc.photon.client.fx.FXHelper.clearCache();
