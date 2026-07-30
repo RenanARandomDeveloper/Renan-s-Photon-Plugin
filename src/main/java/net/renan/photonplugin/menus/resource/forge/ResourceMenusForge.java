@@ -11,6 +11,8 @@ import net.renan.photonplugin.menus.resource.common.ResourceMenuCommonTexture;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 public class ResourceMenusForge {
     private static final String TARGET_DIR_FX = "run/ldlib/assets/photon/fx";
@@ -20,16 +22,26 @@ public class ResourceMenusForge {
     private static final String TARGET_DIR_MODEL_OBJ = "run/ldlib/assets/ldlib/models/obj";
     private static final String TARGET_DIR_MODEL_JSON = "run/ldlib/assets/ldlib/models/block";
     private static final String TARGET_DIR_SHADER = "run/ldlib/assets/ldlib/shaders/core";
-    private static JPanel photonPanel;
+    private static final Map<MCreator, JPanel> PANELS = new WeakHashMap<>();
 
     public static void setupMenu(MCreator mc) {
-        photonPanel = ResourceMenuCommon.setupResourceTab(mc, photonPanel, L10N.t("plugin.photon.resourcemenu.tab.photon"),
-                ResourceMenusForge::createCombinedPanel);
+        JPanel existing;
+        synchronized (PANELS) {
+            existing = PANELS.get(mc);
+        }
+        JPanel updated = ResourceMenuCommon.setupResourceTab(mc, existing,
+                L10N.t("plugin.photon.resourcemenu.tab.photon"), ResourceMenusForge::createCombinedPanel);
+        synchronized (PANELS) {
+            PANELS.put(mc, updated);
+        }
     }
 
     public static void removeMenu(MCreator mc) {
-        ResourceMenuCommon.removeResourceTab(mc, photonPanel);
-        photonPanel = null;
+        JPanel existing;
+        synchronized (PANELS) {
+            existing = PANELS.remove(mc);
+        }
+        ResourceMenuCommon.removeResourceTab(mc, existing);
     }
 
     private static JPanel createCombinedPanel(MCreator mc) {

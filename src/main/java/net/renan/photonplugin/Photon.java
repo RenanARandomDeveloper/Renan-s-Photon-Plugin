@@ -46,7 +46,7 @@ public class Photon extends JavaPlugin {
                 }
 
                 info("Workspace loaded with Photon dependency.");
-                Log.setWorkspaceFolder(mcreator.getWorkspaceFolder());
+                WorkspaceRegistry.register(mcreator, mcreator.getWorkspaceFolder());
                 activateFlavor(mcreator);
             }));
 
@@ -54,7 +54,7 @@ public class Photon extends JavaPlugin {
                 MCreator mcreator = event.getMCreator();
                 if (isPhotonDependency(mcreator)) {
                     info("Workspace refactored with Photon dependency.");
-                    Log.setWorkspaceFolder(mcreator.getWorkspaceFolder());
+                    WorkspaceRegistry.register(mcreator, mcreator.getWorkspaceFolder());
                     activateFlavor(mcreator);
                 } else {
                     info("Workspace refactored without Photon dependency.");
@@ -108,6 +108,7 @@ public class Photon extends JavaPlugin {
     }
 
     private void deactivateFlavor(MCreator mcreator) {
+        File mcFolder = mcreator.getWorkspaceFolder();
         try {
             Generator generator = mcreator.getGenerator();
             GeneratorFlavor flavor = generator.getGeneratorConfiguration().getGeneratorFlavor();
@@ -116,21 +117,24 @@ public class Photon extends JavaPlugin {
             info("Deactivating generator flavor: " + flavor.name());
 
             if (flavor == GeneratorFlavor.NEOFORGE) {
-                AssetPlacementFixer.stopSync();
-                CopyFilesToAssetsFolderNeo.stopSync();
+                AssetPlacementFixer.stopSync(mcFolder);
+                CopyFilesToAssetsFolderNeo.stopSync(mcFolder);
                 ResourceMenusNeo.removeMenu(mcreator);
                 WorkspaceMenuNeo.removeMenu(mcreator);
-                BackupNeo.shutdown();
+                BackupNeo.shutdown(mcreator);
             } else if (flavor == GeneratorFlavor.FORGE) {
-                CopyFilesToAssetsFolderForge.stopSync();
+                CopyFilesToAssetsFolderForge.stopSync(mcFolder);
                 ResourceMenusForge.removeMenu(mcreator);
                 WorkspaceMenuForge.removeMenu(mcreator);
-                BackupForge.shutdown();
+                BackupForge.shutdown(mcreator);
             } else {
                 warn("Unknown or unsupported generator flavor during deactivation: " + flavor.name());
             }
         } catch (Throwable t) {
             error("Failed to cleanly deactivate flavor configuration.", t);
+        } finally {
+            WorkspaceRegistry.unregister(mcreator);
+            Log.releaseWorkspace(mcFolder);
         }
     }
 

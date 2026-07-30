@@ -20,7 +20,7 @@ import java.util.TimerTask;
 
 public final class WorkspaceMenuCommon {
     private static final String MENU_NAME = "PhotonPluginMenu";
-    private static final String PLUGIN_VERSION = "1.0";
+    private static final String PLUGIN_VERSION = "1.1";
     private static final String PLUGIN_AUTHOR = "Renan";
 
     private static Icon scaleIconTo(Icon icon, int size) {
@@ -32,6 +32,15 @@ public final class WorkspaceMenuCommon {
     }
 
     private WorkspaceMenuCommon() {
+    }
+
+    private static File resolveWorkspaceFolder(MCreator mcreator) {
+        try {
+            return mcreator.getFolderManager().getWorkspaceFolder();
+        } catch (Exception e) {
+            Log.error("Failed to resolve workspace folder for the Photon menu.", e);
+            return null;
+        }
     }
 
     public static void setupMenu(MCreator mcreator, String componentLabel, String componentVersion,
@@ -94,8 +103,6 @@ public final class WorkspaceMenuCommon {
         JMenu photonMenu = new JMenu(L10N.t("plugin.photon.workspacemenu.title"));
         photonMenu.setName(MENU_NAME);
 
-
-
         JMenuItem logItem = new JMenuItem(L10N.t("plugin.photon.workspacemenu.log"));
         logItem.addActionListener(e -> openLogWindow(mcreator));
 
@@ -123,6 +130,15 @@ public final class WorkspaceMenuCommon {
     }
 
     public static void openBackupWindow(MCreator mcreator) {
+        File workspaceFolder = resolveWorkspaceFolder(mcreator);
+        if (workspaceFolder == null) {
+            JOptionPane.showMessageDialog(mcreator,
+                    L10N.t("plugin.photon.workspacemenu.backup.open_folder.not_found"),
+                    L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        BackupCommon backup = BackupCommon.forWorkspace(workspaceFolder);
+
         JDialog dialog = new JDialog(mcreator, L10N.t("plugin.photon.workspacemenu.backup.title"), false);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 
@@ -140,10 +156,10 @@ public final class WorkspaceMenuCommon {
             button.setMaximumSize(new Dimension(260, button.getPreferredSize().height));
         }
 
-        backupNowButton.addActionListener(e -> performManualBackup(mcreator));
-        exportButton.addActionListener(e -> openExportBackupsDialog(dialog));
-        restoreButton.addActionListener(e -> openRestoreBackupDialog(dialog));
-        openFolderButton.addActionListener(e -> openBackupsFolder(dialog));
+        backupNowButton.addActionListener(e -> performManualBackup(dialog, backup));
+        exportButton.addActionListener(e -> openExportBackupsDialog(dialog, backup));
+        restoreButton.addActionListener(e -> openRestoreBackupDialog(dialog, backup));
+        openFolderButton.addActionListener(e -> openBackupsFolder(dialog, backup));
 
         buttonsPanel.add(backupNowButton);
         buttonsPanel.add(Box.createVerticalStrut(8));
@@ -169,8 +185,8 @@ public final class WorkspaceMenuCommon {
         dialog.setVisible(true);
     }
 
-    private static void openBackupsFolder(Window owner) {
-        File backupsRootFolder = BackupCommon.getBackupsRootFolder();
+    private static void openBackupsFolder(Window owner, BackupCommon backup) {
+        File backupsRootFolder = backup.getBackupsRootFolder();
         if (backupsRootFolder == null || !backupsRootFolder.exists()) {
             JOptionPane.showMessageDialog(owner,
                     L10N.t("plugin.photon.workspacemenu.backup.open_folder.not_found"),
@@ -187,20 +203,58 @@ public final class WorkspaceMenuCommon {
         }
     }
 
-    private static void performManualBackup(MCreator mcreator) {
-        try {
-            File created = BackupCommon.createManualBackup();
-            String location = created != null ? created.getAbsolutePath() : "";
-            Log.info("Manual backup created at %s", location);
-            JOptionPane.showMessageDialog(mcreator,
-                    L10N.t("plugin.photon.workspacemenu.backup.now.success", location),
-                    L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.INFORMATION_MESSAGE);
-        } catch (IOException ex) {
-            Log.error("Failed to create manual backup.", ex);
-            JOptionPane.showMessageDialog(mcreator,
-                    L10N.t("plugin.photon.workspacemenu.backup.now.failure", ex.getMessage()),
-                    L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.ERROR_MESSAGE);
-        }
+    private static void performManualBackup(Window owner, BackupCommon backup) {
+        runInBackground(owner, backup::createManualBackup,
+                created -> {
+                    String location = created != null ? created.getAbsolutePath() : "";
+                    Log.info("Manual backup created at %s", location);
+                    JOptionPane.showMessageDialog(owner,
+                            L10N.t("plugin.photon.workspacemenu.backup.now.success", location),
+                            L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.INFORMATION_MESSAGE);
+                },
+                ex -> {
+                    Log.error("Failed to create manual backup.", ex);
+                    JOptionPane.showMessageDialog(owner,
+                            L10N.t("plugin.photon.workspacemenu.backup.now.failure", ex.getMessage()),
+                            L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.ERROR_MESSAGE);
+                });
+    }
+
+    private static <T> void runInBackground(Window owner, IOTask<T> task, java.util.function.Consumer<T> onSuccess,
+                                             java.util.function.Consumer<IOException> onFailure) {
+        owner.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        new SwingWorker<T, Void>() {
+            private IOException failure;
+
+            @Override
+            protected T doInBackground() {
+                try {
+                    return task.run();
+                } catch (IOException e) {
+                    failure = e;
+                    return null;
+                }
+            }
+
+            @Override
+            protected void done() {
+                owner.setCursor(Cursor.getDefaultCursor());
+                if (failure != null) {
+                    onFailure.accept(failure);
+                    return;
+                }
+                try {
+                    onSuccess.accept(get());
+                } catch (Exception e) {
+                    onFailure.accept(new IOException(e));
+                }
+            }
+        }.execute();
+    }
+
+    @FunctionalInterface
+    private interface IOTask<T> {
+        T run() throws IOException;
     }
 
     private static JList<File> buildBackupList(List<File> backups, DateTimeFormatter formatter, int selectionMode) {
@@ -234,9 +288,9 @@ public final class WorkspaceMenuCommon {
         return panel;
     }
 
-    public static void openExportBackupsDialog(Window owner) {
-        List<File> manualBackups = BackupCommon.listAvailableBackups(BackupCommon.BackupType.MANUAL);
-        List<File> automaticBackups = BackupCommon.listAvailableBackups(BackupCommon.BackupType.AUTOMATIC);
+    public static void openExportBackupsDialog(Window owner, BackupCommon backup) {
+        List<File> manualBackups = backup.listAvailableBackups(BackupCommon.BackupType.MANUAL);
+        List<File> automaticBackups = backup.listAvailableBackups(BackupCommon.BackupType.AUTOMATIC);
 
         if (manualBackups.isEmpty() && automaticBackups.isEmpty()) {
             JOptionPane.showMessageDialog(owner, L10N.t("plugin.photon.workspacemenu.backup.export.none_found"),
@@ -323,19 +377,27 @@ public final class WorkspaceMenuCommon {
                 destination = new File(destination.getParentFile(), destination.getName() + ".zip");
             }
 
-            try {
-                BackupCommon.exportBackups(selected, destination);
-                Log.info("Exported %d backup(s) to %s", selected.size(), destination.getAbsolutePath());
-                JOptionPane.showMessageDialog(dialog,
-                        L10N.t("plugin.photon.workspacemenu.backup.export.success", destination.getAbsolutePath()),
-                        L10N.t("plugin.photon.workspacemenu.backup.export.title"), JOptionPane.INFORMATION_MESSAGE);
-                dialog.dispose();
-            } catch (IOException ex) {
-                Log.error("Failed to export backups.", ex);
-                JOptionPane.showMessageDialog(dialog,
-                        L10N.t("plugin.photon.workspacemenu.backup.export.failure", ex.getMessage()),
-                        L10N.t("plugin.photon.workspacemenu.backup.export.title"), JOptionPane.ERROR_MESSAGE);
-            }
+            File finalDestination = destination;
+            runInBackground(dialog,
+                    () -> {
+                        backup.exportBackups(selected, finalDestination);
+                        return finalDestination;
+                    },
+                    exported -> {
+                        Log.info("Exported %d backup(s) to %s", selected.size(), exported.getAbsolutePath());
+                        JOptionPane.showMessageDialog(dialog,
+                                L10N.t("plugin.photon.workspacemenu.backup.export.success",
+                                        exported.getAbsolutePath()),
+                                L10N.t("plugin.photon.workspacemenu.backup.export.title"),
+                                JOptionPane.INFORMATION_MESSAGE);
+                        dialog.dispose();
+                    },
+                    ex -> {
+                        Log.error("Failed to export backups.", ex);
+                        JOptionPane.showMessageDialog(dialog,
+                                L10N.t("plugin.photon.workspacemenu.backup.export.failure", ex.getMessage()),
+                                L10N.t("plugin.photon.workspacemenu.backup.export.title"), JOptionPane.ERROR_MESSAGE);
+                    });
         });
 
         JPanel content = new JPanel(new BorderLayout(10, 10));
@@ -350,9 +412,9 @@ public final class WorkspaceMenuCommon {
         dialog.setVisible(true);
     }
 
-    public static void openRestoreBackupDialog(Window owner) {
-        List<File> manualBackups = BackupCommon.listAvailableBackups(BackupCommon.BackupType.MANUAL);
-        List<File> automaticBackups = BackupCommon.listAvailableBackups(BackupCommon.BackupType.AUTOMATIC);
+    public static void openRestoreBackupDialog(Window owner, BackupCommon backup) {
+        List<File> manualBackups = backup.listAvailableBackups(BackupCommon.BackupType.MANUAL);
+        List<File> automaticBackups = backup.listAvailableBackups(BackupCommon.BackupType.AUTOMATIC);
 
         if (manualBackups.isEmpty() && automaticBackups.isEmpty()) {
             JOptionPane.showMessageDialog(owner, L10N.t("plugin.photon.workspacemenu.backup.restore.none_found"),
@@ -418,18 +480,23 @@ public final class WorkspaceMenuCommon {
                 return;
             }
 
-            try {
-                BackupCommon.restoreBackup(selected);
-                JOptionPane.showMessageDialog(dialog,
-                        L10N.t("plugin.photon.workspacemenu.backup.restore.success"),
-                        L10N.t("plugin.photon.workspacemenu.backup.restore"), JOptionPane.INFORMATION_MESSAGE);
-                dialog.dispose();
-            } catch (IOException ex) {
-                Log.error("Failed to restore backup.", ex);
-                JOptionPane.showMessageDialog(dialog,
-                        L10N.t("plugin.photon.workspacemenu.backup.restore.failure", ex.getMessage()),
-                        L10N.t("plugin.photon.workspacemenu.backup.restore"), JOptionPane.ERROR_MESSAGE);
-            }
+            runInBackground(dialog,
+                    () -> {
+                        backup.restoreBackup(selected);
+                        return selected;
+                    },
+                    restored -> {
+                        JOptionPane.showMessageDialog(dialog,
+                                L10N.t("plugin.photon.workspacemenu.backup.restore.success"),
+                                L10N.t("plugin.photon.workspacemenu.backup.restore"), JOptionPane.INFORMATION_MESSAGE);
+                        dialog.dispose();
+                    },
+                    ex -> {
+                        Log.error("Failed to restore backup.", ex);
+                        JOptionPane.showMessageDialog(dialog,
+                                L10N.t("plugin.photon.workspacemenu.backup.restore.failure", ex.getMessage()),
+                                L10N.t("plugin.photon.workspacemenu.backup.restore"), JOptionPane.ERROR_MESSAGE);
+                    });
         });
 
         JPanel content = new JPanel(new BorderLayout(10, 10));
@@ -630,19 +697,26 @@ public final class WorkspaceMenuCommon {
                         destination.getName() + "." + suggestedExtension);
             }
 
-            try {
-                Log.exportLogs(selected, destination);
-                Log.info("Exported %d log file(s) to %s", selected.size(), destination.getAbsolutePath());
-                JOptionPane.showMessageDialog(dialog,
-                        L10N.t("plugin.photon.workspacemenu.log.export.success", destination.getAbsolutePath()),
-                        L10N.t("plugin.photon.workspacemenu.log.export.title"), JOptionPane.INFORMATION_MESSAGE);
-                dialog.dispose();
-            } catch (IOException ex) {
-                Log.error("Failed to export logs.", ex);
-                JOptionPane.showMessageDialog(dialog,
-                        L10N.t("plugin.photon.workspacemenu.log.export.failure", ex.getMessage()),
-                        L10N.t("plugin.photon.workspacemenu.log.export.title"), JOptionPane.ERROR_MESSAGE);
-            }
+            File finalDestination = destination;
+            runInBackground(dialog,
+                    () -> {
+                        Log.exportLogs(selected, finalDestination);
+                        return finalDestination;
+                    },
+                    exported -> {
+                        Log.info("Exported %d log file(s) to %s", selected.size(), exported.getAbsolutePath());
+                        JOptionPane.showMessageDialog(dialog,
+                                L10N.t("plugin.photon.workspacemenu.log.export.success", exported.getAbsolutePath()),
+                                L10N.t("plugin.photon.workspacemenu.log.export.title"),
+                                JOptionPane.INFORMATION_MESSAGE);
+                        dialog.dispose();
+                    },
+                    ex -> {
+                        Log.error("Failed to export logs.", ex);
+                        JOptionPane.showMessageDialog(dialog,
+                                L10N.t("plugin.photon.workspacemenu.log.export.failure", ex.getMessage()),
+                                L10N.t("plugin.photon.workspacemenu.log.export.title"), JOptionPane.ERROR_MESSAGE);
+                    });
         });
 
         JPanel content = new JPanel(new BorderLayout(10, 10));

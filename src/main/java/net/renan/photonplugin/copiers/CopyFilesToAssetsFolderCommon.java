@@ -21,6 +21,7 @@ public abstract class CopyFilesToAssetsFolderCommon {
 
     private final WatchService watchService = new WatchService();
     private volatile boolean stopRequested = false;
+    private volatile File workspaceRoot;
     private volatile Path sourceRoot;
     private volatile Path targetRoot;
     private volatile Path manifestFile;
@@ -36,6 +37,7 @@ public abstract class CopyFilesToAssetsFolderCommon {
 
         Log.info("Initializing Assets WatchService observer...");
 
+        this.workspaceRoot = workspaceRoot;
         sourceRoot = workspaceRoot.toPath().resolve(getSourceRelativePath());
         targetRoot = workspaceRoot.toPath().resolve(TARGET_RELATIVE_PATH);
         manifestFile = workspaceRoot.toPath()
@@ -58,6 +60,7 @@ public abstract class CopyFilesToAssetsFolderCommon {
                 || (Files.isSymbolicLink(path) && Files.isDirectory(path));
 
         watchService.start(List.of(sourceRoot), watchExclusion, (watchedRoot, changed, kind) -> {
+            Log.bindWorkspace(this.workspaceRoot);
             if (!watchedRoot.equals(sourceRoot) && !watchedRoot.startsWith(sourceRoot)) return;
 
             Path target = targetRoot.resolve(sourceRoot.relativize(changed));

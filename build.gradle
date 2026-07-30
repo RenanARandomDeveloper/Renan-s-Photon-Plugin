@@ -32,7 +32,7 @@ afterEvaluate {
 }
 
 tasks.jar {
-    archiveFileName.set("renan_photon_plugin-1.0.zip")
+    archiveFileName.set("renan_photon_plugin-1.1.zip")
     from {
         configurations.export.collect { it.isDirectory('C:/Users/Renan/Desktop/') ? it : zipTree(it) }
     }

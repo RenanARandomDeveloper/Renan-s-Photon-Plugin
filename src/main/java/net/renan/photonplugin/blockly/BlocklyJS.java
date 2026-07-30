@@ -188,7 +188,7 @@ public class BlocklyJS {
     }
 
     private static List<DataListEntry> getFXEntries(@Nonnull Workspace workspace) {
-        return FXListManager.fxEntries.stream().map(name -> new DataListEntry.Dummy(name) {
+        return FXListManager.getEntries(workspace.getWorkspaceFolder()).stream().map(name -> new DataListEntry.Dummy(name) {
             @Override
             public String getReadableName() {
                 if (name == null || name.isEmpty()) {

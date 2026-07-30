@@ -7,6 +7,7 @@ import net.mcreator.ui.init.L10N;
 import net.mcreator.ui.init.UIRES;
 import net.mcreator.ui.modgui.ModElementGUI;
 import net.mcreator.workspace.elements.ModElement;
+import net.renan.photonplugin.Log;
 import net.renan.photonplugin.blockly.FXListManager;
 
 import javax.swing.*;
@@ -28,7 +29,6 @@ import static net.renan.photonplugin.menus.resource.common.ResourceMenuCommon.*;
 public final class ResourceMenuCommonFX {
     private static final String FX_EXTENSION = ".fx";
     private static final Set<String> SKIP_DIRS = Set.of("photon_plugin");
-    private static final String PROCEDURE_SUFFIX = "Procedure";
 
     private ResourceMenuCommonFX() {}
 
@@ -518,7 +518,7 @@ public final class ResourceMenuCommonFX {
                 (targetDir, importedFiles) -> {
                     File current = browser.getCurrentDir();
                     if (store.isVirtualDir(current)) store.assignToVirtualDir(importedFiles, current);
-                    FXListManager.addEntries(importedFiles);
+                    FXListManager.addEntries(mcreator.getWorkspace().getWorkspaceFolder(), importedFiles);
                 }));
         toolBar.add(buildCloneButtonForVirtualBrowser(mcreator, browser, store, targetDirGetter));
         toolBar.add(buildDeleteButtonForVirtualBrowser(mcreator, browser, store));
@@ -533,16 +533,17 @@ public final class ResourceMenuCommonFX {
         panel.add(browser, BorderLayout.CENTER);
 
         attachDirectoryWatcher(panel, browser, targetDirGetter, (root, changed, kind) -> {
+            Log.bindWorkspace(mcreator.getWorkspace().getWorkspaceFolder());
             File file = changed.toFile();
             switch (kind) {
                 case CREATE -> {
                     if (!file.isDirectory() && hasExtension(file, FX_EXTENSION)) {
-                        FXListManager.addEntry(file);
+                        FXListManager.addEntry(mcreator.getWorkspace().getWorkspaceFolder(), file);
                     }
                 }
                 case DELETE -> {
                     if (hasExtension(file, FX_EXTENSION)) {
-                        FXListManager.removeEntry(file);
+                        FXListManager.removeEntry(mcreator.getWorkspace().getWorkspaceFolder(), file);
                     }
                 }
                 case OVERFLOW -> FXListManager.initialize(mcreator.getWorkspace().getWorkspaceFolder(), targetDirGetter.get());
@@ -735,7 +736,7 @@ public final class ResourceMenuCommonFX {
                     }
                 }
                 store.removeFiles(actuallyDeleted);
-                FXListManager.removeEntries(actuallyDeleted);
+                FXListManager.removeEntries(mcreator.getWorkspace().getWorkspaceFolder(), actuallyDeleted);
             }
 
             for (VirtualDeleteFolderDecision decision : decisions) {
@@ -756,7 +757,7 @@ public final class ResourceMenuCommonFX {
                 }
                 if (!actuallyDeleted.isEmpty()) {
                     store.removeFiles(actuallyDeleted);
-                    FXListManager.removeEntries(actuallyDeleted);
+                    FXListManager.removeEntries(mcreator.getWorkspace().getWorkspaceFolder(), actuallyDeleted);
                 }
                 if (allDeleted) {
                     store.deleteFolderAndFiles(folder);
@@ -942,7 +943,7 @@ public final class ResourceMenuCommonFX {
                 if (!singleClonedFiles.isEmpty()) {
                     onEdtVoid(() -> {
                         if (store.isVirtualDir(currentDir)) store.assignToVirtualDir(singleClonedFiles, currentDir);
-                        FXListManager.addEntries(singleClonedFiles);
+                        FXListManager.addEntries(mcreator.getWorkspace().getWorkspaceFolder(), singleClonedFiles);
                     });
                 }
 
@@ -977,7 +978,7 @@ public final class ResourceMenuCommonFX {
                         onEdtVoid(() -> {
                             store.createFolder(cloneName);
                             store.assignToVirtualDir(clonedFileList, store.virtualDirRef(cloneName));
-                            FXListManager.addEntries(clonedFileList);
+                            FXListManager.addEntries(mcreator.getWorkspace().getWorkspaceFolder(), clonedFileList);
                         });
                     }
                     if (anyCloned && !folderFailed) counts[1]++;
@@ -1028,7 +1029,7 @@ public final class ResourceMenuCommonFX {
                     if (outcome.isCancelled()) { cancelAllHolder[0] = true; break; }
                     if (outcome.isRenamed()) {
                         store.renameFile(item, outcome.dest());
-                        FXListManager.renameEntry(item, outcome.dest());
+                        FXListManager.renameEntry(mcreator.getWorkspace().getWorkspaceFolder(), item, outcome.dest());
                         counts[0]++;
                     }
                 }
@@ -1182,30 +1183,46 @@ public final class ResourceMenuCommonFX {
         for (ModElement me : mcreator.getWorkspace().getModElements())
             byName.put(me.getName(), me);
 
+        List<String> namesByLengthDesc = byName.keySet().stream()
+                .sorted(Comparator.comparingInt(String::length).reversed())
+                .collect(java.util.stream.Collectors.toList());
+
         String modPackage = mcreator.getWorkspace().getWorkspaceSettings().getModElementsPackage();
         File packageDir = new File(mcreator.getWorkspace().getWorkspaceFolder(),
                 "src/main/java/" + modPackage.replace('.', '/'));
-        searchSourceDir(packageDir, byName, usagesMap);
+        searchSourceDir(packageDir, byName, namesByLengthDesc, usagesMap);
     }
 
-    private static void searchSourceDir(File dir, Map<String, ModElement> byName, Map<String, List<ModElement>> usagesMap) {
+    private static void searchSourceDir(File dir, Map<String, ModElement> byName, List<String> namesByLengthDesc,
+                                        Map<String, List<ModElement>> usagesMap) {
         if (!dir.isDirectory()) return;
         File[] children = dir.listFiles();
         if (children == null) return;
         for (File child : children) {
             if (child.isDirectory()) {
-                if (!SKIP_DIRS.contains(child.getName())) searchSourceDir(child, byName, usagesMap);
+                if (!SKIP_DIRS.contains(child.getName()))
+                    searchSourceDir(child, byName, namesByLengthDesc, usagesMap);
             } else {
                 String fileName = child.getName();
                 if (!fileName.endsWith(".java")) continue;
                 String baseName = fileName.substring(0, fileName.length() - 5);
-                if (!baseName.endsWith(PROCEDURE_SUFFIX)) continue;
-                String elementName = baseName.substring(0, baseName.length() - PROCEDURE_SUFFIX.length());
-                if (elementName.isEmpty()) continue;
+                String elementName = matchOwningElementName(baseName, namesByLengthDesc);
+                if (elementName == null) continue;
                 ModElement owner = byName.get(elementName);
                 if (owner != null) checkFileAndAddUsages(child, owner, usagesMap);
             }
         }
+    }
+
+    private static String matchOwningElementName(String baseName, List<String> namesByLengthDesc) {
+        for (String name : namesByLengthDesc) {
+            if (baseName.equals(name)) return name;
+            if (baseName.length() > name.length() && baseName.startsWith(name)
+                    && Character.isUpperCase(baseName.charAt(name.length()))) {
+                return name;
+            }
+        }
+        return null;
     }
 
     private static void checkFileAndAddUsages(File file, ModElement me, Map<String, List<ModElement>> usagesMap) {
@@ -1235,6 +1252,10 @@ public final class ResourceMenuCommonFX {
         return keys;
     }
 
+    private record UsagesHeaderRow(String text) {}
+
+    private static final Object NO_USAGES_ROW = new Object();
+
     private static void showUsagesDialog(MCreator mcreator, Map<String, List<ModElement>> usagesMap) {
         JDialog dialog = new JDialog(mcreator, L10N.t("plugin.photon.resourcemenu.search.usages.title"), true);
         dialog.setLayout(new BorderLayout());
@@ -1244,9 +1265,9 @@ public final class ResourceMenuCommonFX {
         DefaultListModel<Object> listModel = new DefaultListModel<>();
 
         for (Map.Entry<String, List<ModElement>> entry : usagesMap.entrySet()) {
-            listModel.addElement(" " + entry.getKey() + FX_EXTENSION);
+            listModel.addElement(new UsagesHeaderRow(entry.getKey() + FX_EXTENSION));
             if (entry.getValue().isEmpty()) {
-                listModel.addElement(" empty ");
+                listModel.addElement(NO_USAGES_ROW);
             } else {
                 entry.getValue().forEach(listModel::addElement);
             }
@@ -1291,20 +1312,18 @@ public final class ResourceMenuCommonFX {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            if (value instanceof String s) {
-                if (s.startsWith(" ")) {
-                    setText(s.substring(3));
-                    setFont(getFont().deriveFont(Font.BOLD, 12f));
-                    setIcon(null);
-                    setForeground(isSelected ? Color.WHITE : new Color(210, 210, 210));
-                    setBorder(BorderFactory.createEmptyBorder(8, 6, 3, 6));
-                } else if (s.equals(" empty ")) {
-                    setText("    " + L10N.t("plugin.photon.resourcemenu.search.usages.no.usages"));
-                    setFont(getFont().deriveFont(Font.ITALIC, 11f));
-                    setIcon(null);
-                    setForeground(isSelected ? Color.WHITE : Color.GRAY);
-                    setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-                }
+            if (value == NO_USAGES_ROW) {
+                setText("    " + L10N.t("plugin.photon.resourcemenu.search.usages.no.usages"));
+                setFont(getFont().deriveFont(Font.ITALIC, 11f));
+                setIcon(null);
+                setForeground(isSelected ? Color.WHITE : Color.GRAY);
+                setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+            } else if (value instanceof UsagesHeaderRow header) {
+                setText(header.text());
+                setFont(getFont().deriveFont(Font.BOLD, 12f));
+                setIcon(null);
+                setForeground(isSelected ? Color.WHITE : new Color(210, 210, 210));
+                setBorder(BorderFactory.createEmptyBorder(8, 6, 3, 6));
             } else if (value instanceof ModElement me) {
                 setText(me.getName());
                 setFont(getFont().deriveFont(Font.PLAIN, 12f));

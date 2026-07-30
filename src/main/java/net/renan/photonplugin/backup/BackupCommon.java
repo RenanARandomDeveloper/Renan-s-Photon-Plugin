@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -58,41 +60,29 @@ public final class BackupCommon {
     private static final int MAX_BACKUPS_PER_TYPE = 10;
     private static final long DEBOUNCE_MILLIS = 3000L;
 
-    private static final WatchService WATCH_SERVICE = new WatchService();
+    private static final Map<String, BackupCommon> INSTANCES = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService DEBOUNCE_EXECUTOR =
-            Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Executors.newScheduledThreadPool(2, runnable -> {
                 Thread thread = new Thread(runnable, "Photon-Backup-Debounce");
                 thread.setDaemon(true);
                 return thread;
             });
 
-    private static volatile File workspaceFolder;
-    private static volatile File backupsRootFolder;
-    private static volatile File manualFolder;
-    private static volatile File automaticFolder;
-    private static volatile List<Path> watchedRoots = List.of();
-    private static volatile ScheduledFuture<?> pendingAutomaticBackup;
+    private final File workspaceFolder;
+    private final File backupsRootFolder;
+    private final File manualFolder;
+    private final File automaticFolder;
+    private final WatchService watchService = new WatchService();
+    private volatile List<Path> watchedRoots = List.of();
+    private volatile ScheduledFuture<?> pendingAutomaticBackup;
 
-    private BackupCommon() {
-    }
+    private BackupCommon(File workspaceFolder) {
+        this.workspaceFolder = workspaceFolder;
 
-    public static synchronized void setWorkspaceFolder(File workspace) {
-        stopAutoBackup();
-
-        if (workspace == null) {
-            workspaceFolder = null;
-            backupsRootFolder = null;
-            manualFolder = null;
-            automaticFolder = null;
-            return;
-        }
-
-        workspaceFolder = workspace;
-
-        File photonFolder = new File(workspace, ".photon");
-        backupsRootFolder = new File(photonFolder, "backups");
-        manualFolder = new File(backupsRootFolder, "manual");
-        automaticFolder = new File(backupsRootFolder, "automatically");
+        File photonFolder = new File(workspaceFolder, ".photon");
+        this.backupsRootFolder = new File(photonFolder, "backups");
+        this.manualFolder = new File(backupsRootFolder, "manual");
+        this.automaticFolder = new File(backupsRootFolder, "automatically");
 
         if (!manualFolder.exists() && !manualFolder.mkdirs()) {
             Log.error("Failed to create manual backups folder at " + manualFolder.getAbsolutePath());
@@ -106,25 +96,57 @@ public final class BackupCommon {
         enforceBackupLimit(BackupType.AUTOMATIC);
     }
 
-    public static synchronized void startAutoBackup(List<Path> rootsToWatch) {
+    public static BackupCommon forWorkspace(File workspaceFolder) {
+        if (workspaceFolder == null) {
+            throw new IllegalArgumentException("workspaceFolder must not be null");
+        }
+        return INSTANCES.computeIfAbsent(instanceKey(workspaceFolder), key -> new BackupCommon(workspaceFolder));
+    }
+
+    public static void shutdownWorkspace(File workspaceFolder) {
+        String key = instanceKey(workspaceFolder);
+        if (key == null) {
+            return;
+        }
+        BackupCommon instance = INSTANCES.remove(key);
+        if (instance != null) {
+            instance.stopAutoBackup();
+        }
+    }
+
+    private static String instanceKey(File workspaceFolder) {
+        if (workspaceFolder == null) {
+            return null;
+        }
+        try {
+            return workspaceFolder.getCanonicalPath();
+        } catch (IOException e) {
+            return workspaceFolder.getAbsolutePath();
+        }
+    }
+
+    public synchronized void startAutoBackup(List<Path> rootsToWatch) {
         stopAutoBackup();
 
-        if (rootsToWatch == null || rootsToWatch.isEmpty() || automaticFolder == null) {
+        if (rootsToWatch == null || rootsToWatch.isEmpty()) {
             return;
         }
 
         watchedRoots = List.copyOf(rootsToWatch);
 
-        Predicate<Path> exclusion = BackupCommon::isExcludedFromWatch;
-        WATCH_SERVICE.start(watchedRoots, exclusion, (watchedRoot, changedPath, kind) -> scheduleAutomaticBackup());
+        Predicate<Path> exclusion = this::isExcludedFromWatch;
+        watchService.start(watchedRoots, exclusion, (watchedRoot, changedPath, kind) -> {
+            Log.bindWorkspace(workspaceFolder);
+            scheduleAutomaticBackup();
+        });
 
         Log.info("Photon backup watch service started for: %s", watchedRoots);
 
         scheduleAutomaticBackup();
     }
 
-    public static synchronized void stopAutoBackup() {
-        WATCH_SERVICE.stop();
+    public synchronized void stopAutoBackup() {
+        watchService.stop();
 
         if (pendingAutomaticBackup != null) {
             pendingAutomaticBackup.cancel(false);
@@ -132,12 +154,12 @@ public final class BackupCommon {
         }
     }
 
-    public static boolean isAutoBackupRunning() {
-        return WATCH_SERVICE.isRunning();
+    public boolean isAutoBackupRunning() {
+        return watchService.isRunning();
     }
 
-    private static boolean isExcludedFromWatch(Path path) {
-        if (path == null || backupsRootFolder == null) {
+    private boolean isExcludedFromWatch(Path path) {
+        if (path == null) {
             return false;
         }
         String pathString = path.toString();
@@ -146,15 +168,16 @@ public final class BackupCommon {
                 || pathString.endsWith(File.separator + ".photon");
     }
 
-    private static synchronized void scheduleAutomaticBackup() {
+    private synchronized void scheduleAutomaticBackup() {
         if (pendingAutomaticBackup != null && !pendingAutomaticBackup.isDone()) {
             pendingAutomaticBackup.cancel(false);
         }
-        pendingAutomaticBackup = DEBOUNCE_EXECUTOR.schedule(BackupCommon::runAutomaticBackup,
+        pendingAutomaticBackup = DEBOUNCE_EXECUTOR.schedule(this::runAutomaticBackup,
                 DEBOUNCE_MILLIS, TimeUnit.MILLISECONDS);
     }
 
-    private static void runAutomaticBackup() {
+    private void runAutomaticBackup() {
+        Log.bindWorkspace(workspaceFolder);
         try {
             performBackup(BackupType.AUTOMATIC, watchedRoots);
         } catch (IOException e) {
@@ -162,18 +185,15 @@ public final class BackupCommon {
         }
     }
 
-    public static File createManualBackup() throws IOException {
+    public File createManualBackup() throws IOException {
         return createManualBackup(watchedRoots);
     }
 
-    public static synchronized File createManualBackup(List<Path> sourceRoots) throws IOException {
-        if (manualFolder == null) {
-            throw new IOException("No workspace folder configured for backups.");
-        }
+    public synchronized File createManualBackup(List<Path> sourceRoots) throws IOException {
         return performBackup(BackupType.MANUAL, sourceRoots);
     }
 
-    public static synchronized void restoreBackup(File backup) throws IOException {
+    public synchronized void restoreBackup(File backup) throws IOException {
         if (backup == null || !backup.exists()) {
             throw new IOException("Backup not found: " + backup);
         }
@@ -195,7 +215,7 @@ public final class BackupCommon {
         }
     }
 
-    private static void restoreFromDirectory(File backupDir, List<Path> roots) throws IOException {
+    private void restoreFromDirectory(File backupDir, List<Path> roots) throws IOException {
         File[] entries = backupDir.listFiles(File::isDirectory);
         if (entries == null) {
             return;
@@ -210,7 +230,7 @@ public final class BackupCommon {
         }
     }
 
-    private static void restoreFromZip(File zipFile, List<Path> roots) throws IOException {
+    private void restoreFromZip(File zipFile, List<Path> roots) throws IOException {
         Path tempDir = Files.createTempDirectory("photon-restore-");
         try {
             try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
@@ -241,11 +261,8 @@ public final class BackupCommon {
         return null;
     }
 
-    private static synchronized File performBackup(BackupType type, List<Path> sourceRoots) throws IOException {
+    private synchronized File performBackup(BackupType type, List<Path> sourceRoots) throws IOException {
         File typeFolder = folderFor(type);
-        if (typeFolder == null) {
-            throw new IOException("Backups folder not initialized. No workspace is configured.");
-        }
         if (sourceRoots == null || sourceRoots.isEmpty()) {
             throw new IOException("No source folders configured for backup.");
         }
@@ -341,8 +358,8 @@ public final class BackupCommon {
         });
     }
 
-    private static void compressStaleAutomaticBackups() {
-        if (automaticFolder == null || !automaticFolder.isDirectory()) {
+    private void compressStaleAutomaticBackups() {
+        if (!automaticFolder.isDirectory()) {
             return;
         }
 
@@ -401,9 +418,9 @@ public final class BackupCommon {
         return zipFile;
     }
 
-    private static void enforceBackupLimit(BackupType type) {
+    private void enforceBackupLimit(BackupType type) {
         File folder = folderFor(type);
-        if (folder == null || !folder.isDirectory()) {
+        if (!folder.isDirectory()) {
             return;
         }
 
@@ -468,10 +485,10 @@ public final class BackupCommon {
                 java.time.ZoneOffset.systemDefault().getRules().getOffset(LocalDateTime.now()));
     }
 
-    public static List<File> listAvailableBackups(BackupType type) {
+    public List<File> listAvailableBackups(BackupType type) {
         List<File> result = new ArrayList<>();
         File folder = folderFor(type);
-        if (folder == null || !folder.isDirectory()) {
+        if (!folder.isDirectory()) {
             return result;
         }
 
@@ -485,7 +502,7 @@ public final class BackupCommon {
         return result;
     }
 
-    public static synchronized void exportBackups(List<File> selectedBackups, File destination) throws IOException {
+    public synchronized void exportBackups(List<File> selectedBackups, File destination) throws IOException {
         if (selectedBackups == null || selectedBackups.isEmpty()) {
             throw new IOException("No backups selected for export.");
         }
@@ -541,23 +558,23 @@ public final class BackupCommon {
         }
     }
 
-    private static File folderFor(BackupType type) {
+    private File folderFor(BackupType type) {
         return type == BackupType.MANUAL ? manualFolder : automaticFolder;
     }
 
-    public static File getBackupsRootFolder() {
+    public File getBackupsRootFolder() {
         return backupsRootFolder;
     }
 
-    public static File getManualFolder() {
+    public File getManualFolder() {
         return manualFolder;
     }
 
-    public static File getAutomaticFolder() {
+    public File getAutomaticFolder() {
         return automaticFolder;
     }
 
-    public static File getWorkspaceFolder() {
+    public File getWorkspaceFolder() {
         return workspaceFolder;
     }
 }

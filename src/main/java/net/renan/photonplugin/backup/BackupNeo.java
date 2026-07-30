@@ -11,6 +11,7 @@ public final class BackupNeo {
 
     private BackupNeo() {
     }
+
     public static void setup(MCreator mcreator) {
         File workspaceFolder = resolveWorkspaceFolder(mcreator);
         if (workspaceFolder == null) {
@@ -18,12 +19,16 @@ public final class BackupNeo {
             return;
         }
 
-        BackupCommon.setWorkspaceFolder(workspaceFolder);
-        BackupCommon.startAutoBackup(getWatchedRoots(workspaceFolder));
+        BackupCommon backup = BackupCommon.forWorkspace(workspaceFolder);
+        backup.startAutoBackup(getWatchedRoots(workspaceFolder));
     }
 
-    public static void shutdown() {
-        BackupCommon.stopAutoBackup();
+    public static void shutdown(MCreator mcreator) {
+        File workspaceFolder = resolveWorkspaceFolder(mcreator);
+        if (workspaceFolder == null) {
+            return;
+        }
+        BackupCommon.shutdownWorkspace(workspaceFolder);
     }
 
     private static List<Path> getWatchedRoots(File workspaceFolder) {

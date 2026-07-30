@@ -11,6 +11,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +24,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.Deflater;
@@ -36,26 +40,65 @@ public final class Log {
     private static final Pattern FILE_NAME_DATE_PATTERN = Pattern.compile("photon_(\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})\\.(log|zip)", Pattern.CASE_INSENSITIVE);
     private static final int MAX_MEMORY_LINES = 10000;
     private static final int MAX_LOG_FILES = 10;
-    private static final List<String> LOG_BUFFER = Collections.synchronizedList(new LinkedList<>());
-    private static volatile File logDirectory;
-    private static volatile File logsFolder;
-    private static volatile File logFile;
-    private static long totalLinesRecorded = 0;
-    private static Writer activeWriter;
-    private static File activeWriterFile;
+
+    private static final Map<String, Session> SESSIONS = new ConcurrentHashMap<>();
+    private static final ThreadLocal<Session> CURRENT = new ThreadLocal<>();
+    private static final Session UNBOUND = new Session();
 
     private Log() {
     }
 
-    public static synchronized void setWorkspaceFolder(File workspaceFolder) {
-        closeActiveWriter();
+    private static final class Session {
+        final List<String> buffer = Collections.synchronizedList(new LinkedList<>());
+        volatile File logDirectory;
+        volatile File logsFolder;
+        volatile File logFile;
+        long totalLinesRecorded = 0;
+        Writer activeWriter;
+        File activeWriterFile;
+    }
 
+    public static void bindWorkspace(File workspaceFolder) {
         if (workspaceFolder == null) {
-            logDirectory = null;
-            logsFolder = null;
-            logFile = null;
+            CURRENT.remove();
             return;
         }
+        CURRENT.set(SESSIONS.computeIfAbsent(sessionKey(workspaceFolder), key -> createSession(workspaceFolder)));
+    }
+
+    public static void unbindWorkspace() {
+        CURRENT.remove();
+    }
+
+    public static synchronized void releaseWorkspace(File workspaceFolder) {
+        String key = sessionKey(workspaceFolder);
+        if (key == null) {
+            return;
+        }
+        Session session = SESSIONS.remove(key);
+        if (session != null) {
+            closeWriter(session);
+        }
+    }
+
+    private static String sessionKey(File workspaceFolder) {
+        if (workspaceFolder == null) {
+            return null;
+        }
+        try {
+            return workspaceFolder.getCanonicalPath();
+        } catch (IOException e) {
+            return workspaceFolder.getAbsolutePath();
+        }
+    }
+
+    private static Session current() {
+        Session session = CURRENT.get();
+        return session != null ? session : UNBOUND;
+    }
+
+    private static Session createSession(File workspaceFolder) {
+        Session session = new Session();
 
         File photonFolder = new File(workspaceFolder, ".photon");
         if (!photonFolder.exists() && !photonFolder.mkdirs()) {
@@ -67,28 +110,30 @@ public final class Log {
             LOGGER.error("[Photon] Failed to create logs folder at {}", logsDir.getAbsolutePath());
         }
 
-        logDirectory = photonFolder;
-        logsFolder = logsDir;
+        session.logDirectory = photonFolder;
+        session.logsFolder = logsDir;
 
         String fileName = "photon_" + LocalDateTime.now().format(FILE_NAME_FORMAT) + ".log";
-        logFile = new File(logsDir, fileName);
+        session.logFile = new File(logsDir, fileName);
 
-        compressOldLogs();
-        enforceLogLimit();
+        compressOldLogs(session);
+        enforceLogLimit(session);
+
+        return session;
     }
 
-    private static void compressOldLogs() {
-        if (logsFolder == null || !logsFolder.isDirectory()) {
+    private static void compressOldLogs(Session session) {
+        if (session.logsFolder == null || !session.logsFolder.isDirectory()) {
             return;
         }
 
-        File[] files = logsFolder.listFiles((dir, name) -> name.toLowerCase().endsWith(".log"));
+        File[] files = session.logsFolder.listFiles((dir, name) -> name.toLowerCase().endsWith(".log"));
         if (files == null) {
             return;
         }
 
         for (File oldLog : files) {
-            if (logFile != null && oldLog.getAbsolutePath().equals(logFile.getAbsolutePath())) {
+            if (session.logFile != null && oldLog.getAbsolutePath().equals(session.logFile.getAbsolutePath())) {
                 continue;
             }
             compressLogFile(oldLog, true);
@@ -132,12 +177,12 @@ public final class Log {
         return zipFile;
     }
 
-    private static void enforceLogLimit() {
-        if (logsFolder == null || !logsFolder.isDirectory()) {
+    private static void enforceLogLimit(Session session) {
+        if (session.logsFolder == null || !session.logsFolder.isDirectory()) {
             return;
         }
 
-        File[] files = logsFolder.listFiles((dir, name) -> {
+        File[] files = session.logsFolder.listFiles((dir, name) -> {
             String lower = name.toLowerCase();
             return lower.endsWith(".log") || lower.endsWith(".zip");
         });
@@ -150,7 +195,7 @@ public final class Log {
         int amountToDelete = files.length - MAX_LOG_FILES + 1;
         for (int i = 0; i < amountToDelete && i < files.length; i++) {
             File file = files[i];
-            if (logFile != null && file.getAbsolutePath().equals(logFile.getAbsolutePath())) {
+            if (session.logFile != null && file.getAbsolutePath().equals(session.logFile.getAbsolutePath())) {
                 continue;
             }
             if (!file.delete()) {
@@ -175,13 +220,13 @@ public final class Log {
                 java.time.ZoneOffset.systemDefault().getRules().getOffset(LocalDateTime.now()));
     }
 
-
     public static File getLogsFolder() {
-        return logsFolder;
+        return current().logsFolder;
     }
 
     public static List<File> listAvailableLogFiles() {
         List<File> result = new ArrayList<>();
+        File logsFolder = current().logsFolder;
         if (logsFolder == null || !logsFolder.isDirectory()) {
             return result;
         }
@@ -199,7 +244,7 @@ public final class Log {
         return result;
     }
 
-    public static synchronized void exportLogs(List<File> selectedLogs, File destination) throws IOException {
+    public static void exportLogs(List<File> selectedLogs, File destination) throws IOException {
         if (selectedLogs == null || selectedLogs.isEmpty()) {
             throw new IOException("No log files selected for export.");
         }
@@ -263,36 +308,40 @@ public final class Log {
     }
 
     public static File getLogFile() {
-        return logFile;
+        return current().logFile;
     }
 
     public static List<String> getBufferedLog() {
-        synchronized (LOG_BUFFER) {
-            return new LinkedList<>(LOG_BUFFER);
+        Session session = current();
+        synchronized (session.buffer) {
+            return new LinkedList<>(session.buffer);
         }
     }
 
     public static long getTotalLinesRecorded() {
-        synchronized (LOG_BUFFER) {
-            return totalLinesRecorded;
+        Session session = current();
+        synchronized (session.buffer) {
+            return session.totalLinesRecorded;
         }
     }
 
     public static List<String> getBufferedLogSince(long sinceTotalCount) {
-        synchronized (LOG_BUFFER) {
-            long oldestAvailableTotal = totalLinesRecorded - LOG_BUFFER.size();
+        Session session = current();
+        synchronized (session.buffer) {
+            long oldestAvailableTotal = session.totalLinesRecorded - session.buffer.size();
             if (sinceTotalCount < oldestAvailableTotal) {
                 return null;
             }
             int skip = (int) (sinceTotalCount - oldestAvailableTotal);
-            if (skip >= LOG_BUFFER.size()) {
+            if (skip >= session.buffer.size()) {
                 return List.of();
             }
-            return new ArrayList<>(LOG_BUFFER.subList(skip, LOG_BUFFER.size()));
+            return new ArrayList<>(session.buffer.subList(skip, session.buffer.size()));
         }
     }
 
     public static String readPersistedLog() {
+        File logFile = current().logFile;
         if (logFile != null && logFile.exists()) {
             try {
                 return Files.readString(logFile.toPath());
@@ -315,54 +364,55 @@ public final class Log {
     }
 
     private static void record(String level, String caller, String message) {
+        Session session = current();
         String timestamp = LocalDateTime.now().format(TIME_FORMAT);
         String line = "[" + timestamp + "] [" + caller + "] [" + level + "] " + message;
 
-        synchronized (LOG_BUFFER) {
-            LOG_BUFFER.add(line);
-            totalLinesRecorded++;
-            while (LOG_BUFFER.size() > MAX_MEMORY_LINES) {
-                LOG_BUFFER.remove(0);
+        synchronized (session.buffer) {
+            session.buffer.add(line);
+            session.totalLinesRecorded++;
+            while (session.buffer.size() > MAX_MEMORY_LINES) {
+                session.buffer.remove(0);
             }
         }
 
-        writeToFile(line);
+        writeToFile(session, line);
     }
 
-    private static synchronized void writeToFile(String line) {
-        File target = logFile;
+    private static synchronized void writeToFile(Session session, String line) {
+        File target = session.logFile;
         if (target == null) {
             return;
         }
 
         try {
-            if (activeWriter == null || !target.equals(activeWriterFile)) {
-                closeActiveWriter();
+            if (session.activeWriter == null || !target.equals(session.activeWriterFile)) {
+                closeWriter(session);
                 File parent = target.getParentFile();
                 if (parent != null && !parent.exists()) {
                     parent.mkdirs();
                 }
-                activeWriter = new BufferedWriter(new FileWriter(target, true));
-                activeWriterFile = target;
+                session.activeWriter = new BufferedWriter(new FileWriter(target, true));
+                session.activeWriterFile = target;
             }
-            activeWriter.write(line);
-            activeWriter.write(System.lineSeparator());
-            activeWriter.flush();
+            session.activeWriter.write(line);
+            session.activeWriter.write(System.lineSeparator());
+            session.activeWriter.flush();
         } catch (IOException e) {
             LOGGER.error("[Photon] Failed to write to log file", e);
-            closeActiveWriter();
+            closeWriter(session);
         }
     }
 
-    private static synchronized void closeActiveWriter() {
-        if (activeWriter != null) {
+    private static synchronized void closeWriter(Session session) {
+        if (session.activeWriter != null) {
             try {
-                activeWriter.close();
+                session.activeWriter.close();
             } catch (IOException e) {
                 LOGGER.error("[Photon] Failed to close log file writer", e);
             }
-            activeWriter = null;
-            activeWriterFile = null;
+            session.activeWriter = null;
+            session.activeWriterFile = null;
         }
     }
 
@@ -385,6 +435,8 @@ public final class Log {
 
     public static void error(String message, Throwable throwable) {
         String caller = getCallerClassName();
-        record("ERROR", caller, message + " - " + throwable);
+        StringWriter stackTrace = new StringWriter();
+        throwable.printStackTrace(new PrintWriter(stackTrace));
+        record("ERROR", caller, message + System.lineSeparator() + stackTrace);
     }
 }

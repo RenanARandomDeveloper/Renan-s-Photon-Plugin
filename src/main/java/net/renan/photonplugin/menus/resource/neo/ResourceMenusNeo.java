@@ -7,6 +7,8 @@ import net.renan.photonplugin.menus.resource.common.*;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 public class ResourceMenusNeo {
     private static final String TARGET_DIR_FX = "run/ldlib2/assets/photon/fx";
@@ -15,16 +17,26 @@ public class ResourceMenusNeo {
     private static final String TARGET_DIR_TEXTURE = "run/ldlib2/assets/ldlib2/textures";
     private static final String TARGET_DIR_MODEL = "run/ldlib2/assets/ldlib2/models";
     private static final String TARGET_DIR_RESOURCE = "run/ldlib2/assets/ldlib2/resources/";
-    private static JPanel photonPanel;
+    private static final Map<MCreator, JPanel> PANELS = new WeakHashMap<>();
 
     public static void setupMenu(MCreator mc) {
-        photonPanel = ResourceMenuCommon.setupResourceTab(mc, photonPanel, L10N.t("plugin.photon.resourcemenu.tab.photon"),
-                ResourceMenusNeo::createCombinedPanel);
+        JPanel existing;
+        synchronized (PANELS) {
+            existing = PANELS.get(mc);
+        }
+        JPanel updated = ResourceMenuCommon.setupResourceTab(mc, existing,
+                L10N.t("plugin.photon.resourcemenu.tab.photon"), ResourceMenusNeo::createCombinedPanel);
+        synchronized (PANELS) {
+            PANELS.put(mc, updated);
+        }
     }
 
     public static void removeMenu(MCreator mc) {
-        ResourceMenuCommon.removeResourceTab(mc, photonPanel);
-        photonPanel = null;
+        JPanel existing;
+        synchronized (PANELS) {
+            existing = PANELS.remove(mc);
+        }
+        ResourceMenuCommon.removeResourceTab(mc, existing);
     }
 
     private static JPanel createCombinedPanel(MCreator mc) {

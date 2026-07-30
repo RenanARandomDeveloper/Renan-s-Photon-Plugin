@@ -15,24 +15,44 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class AssetPlacementFixer {
-    private static final Object LOCK = new Object();
-    private static final WatchService watchService = new WatchService();
+    private static final Map<String, AssetPlacementFixer> INSTANCES = new ConcurrentHashMap<>();
+
     private static final String ASSETS_RELATIVE_PATH = "run/ldlib2/assets";
     private static final String FX_PROJECTS_TARGET_RELATIVE_PATH = "fx_projects";
     private static final String FX_TARGET_RELATIVE_PATH = "photon/fx";
     private static final String TEXTURES_TARGET_RELATIVE_PATH = "ldlib2/textures";
     private static final String RESOURCES_TARGET_RELATIVE_PATH = "ldlib2/resources";
     private static final String MODELS_TARGET_RELATIVE_PATH = "ldlib2/models";
-    private static volatile Path assetsRoot;
-    private static volatile Path fxProjectsDir;
-    private static volatile Path fxDir;
-    private static volatile Path texturesDir;
-    private static volatile Path resourcesDir;
-    private static volatile Path modelsDir;
 
-    private AssetPlacementFixer() {
+    private final File workspaceRoot;
+    private final WatchService watchService = new WatchService();
+    private final Path assetsRoot;
+    private final Path fxProjectsDir;
+    private final Path fxDir;
+    private final Path texturesDir;
+    private final Path resourcesDir;
+    private final Path modelsDir;
+
+    private AssetPlacementFixer(File workspaceRoot) {
+        this.workspaceRoot = workspaceRoot;
+        this.assetsRoot = workspaceRoot.toPath().resolve(ASSETS_RELATIVE_PATH);
+        this.fxProjectsDir = assetsRoot.resolve(FX_PROJECTS_TARGET_RELATIVE_PATH);
+        this.fxDir = assetsRoot.resolve(FX_TARGET_RELATIVE_PATH);
+        this.texturesDir = assetsRoot.resolve(TEXTURES_TARGET_RELATIVE_PATH);
+        this.resourcesDir = assetsRoot.resolve(RESOURCES_TARGET_RELATIVE_PATH);
+        this.modelsDir = assetsRoot.resolve(MODELS_TARGET_RELATIVE_PATH);
+    }
+
+    private static String instanceKey(File workspaceRoot) {
+        try {
+            return workspaceRoot.getCanonicalPath();
+        } catch (IOException e) {
+            return workspaceRoot.getAbsolutePath();
+        }
     }
 
     public static void startSync(File workspaceRoot) {
@@ -41,70 +61,76 @@ public class AssetPlacementFixer {
             return;
         }
 
-        synchronized (LOCK) {
-            stopSync();
+        stopSync(workspaceRoot);
 
-            Log.info("Initializing AssetPlacementFixer WatchService...");
+        AssetPlacementFixer instance = new AssetPlacementFixer(workspaceRoot);
+        INSTANCES.put(instanceKey(workspaceRoot), instance);
+        instance.start();
+    }
 
-            assetsRoot = workspaceRoot.toPath().resolve(ASSETS_RELATIVE_PATH);
-            fxProjectsDir = assetsRoot.resolve(FX_PROJECTS_TARGET_RELATIVE_PATH);
-            fxDir = assetsRoot.resolve(FX_TARGET_RELATIVE_PATH);
-            texturesDir = assetsRoot.resolve(TEXTURES_TARGET_RELATIVE_PATH);
-            resourcesDir = assetsRoot.resolve(RESOURCES_TARGET_RELATIVE_PATH);
-            modelsDir = assetsRoot.resolve(MODELS_TARGET_RELATIVE_PATH);
+    public static void stopSync(File workspaceRoot) {
+        if (workspaceRoot == null) {
+            return;
+        }
+        AssetPlacementFixer instance = INSTANCES.remove(instanceKey(workspaceRoot));
+        if (instance != null) {
+            instance.stop();
+        }
+    }
 
-            try {
-                Files.createDirectories(fxProjectsDir);
-                Files.createDirectories(fxDir);
-                Files.createDirectories(texturesDir);
-                Files.createDirectories(resourcesDir);
-                Files.createDirectories(modelsDir);
-            } catch (IOException e) {
-                Log.error("Failed to create target directories for AssetPlacementFixer.", e);
-                return;
-            }
+    private synchronized void start() {
+        Log.info("Initializing AssetPlacementFixer WatchService...");
 
-            try {
-                Log.info("Performing initial scan and correction of misplaced assets in: %s", assetsRoot);
-                performFullCorrection();
-            } catch (IOException e) {
-                Log.warn("Error encountered during initial directory correction scan. Message: %s", e.getMessage());
-            }
+        try {
+            Files.createDirectories(fxProjectsDir);
+            Files.createDirectories(fxDir);
+            Files.createDirectories(texturesDir);
+            Files.createDirectories(resourcesDir);
+            Files.createDirectories(modelsDir);
+        } catch (IOException e) {
+            Log.error("Failed to create target directories for AssetPlacementFixer.", e);
+            return;
+        }
 
-            Log.info("Registering file tree observers for: %s", assetsRoot);
+        try {
+            Log.info("Performing initial scan and correction of misplaced assets in: %s", assetsRoot);
+            performFullCorrection();
+        } catch (IOException e) {
+            Log.warn("Error encountered during initial directory correction scan. Message: %s", e.getMessage());
+        }
 
-            watchService.start(List.of(assetsRoot), AssetPlacementFixer::isIgnoredPath, (root, changed, kind) -> {
-                switch (kind) {
-                    case OVERFLOW -> {
-                        Log.warn("File system events overflowed. Triggering full directory correction rescan.");
-                        try {
-                            performFullCorrection();
-                        } catch (IOException e) {
-                            Log.error("Failed to execute rescue scan after overflow.", e);
-                        }
-                    }
-                    case CREATE, MODIFY -> handleChange(changed);
-                    case DELETE -> {
+        Log.info("Registering file tree observers for: %s", assetsRoot);
+
+        watchService.start(List.of(assetsRoot), this::isIgnoredPath, (root, changed, kind) -> {
+            Log.bindWorkspace(workspaceRoot);
+            switch (kind) {
+                case OVERFLOW -> {
+                    Log.warn("File system events overflowed. Triggering full directory correction rescan.");
+                    try {
+                        performFullCorrection();
+                    } catch (IOException e) {
+                        Log.error("Failed to execute rescue scan after overflow.", e);
                     }
                 }
-            });
+                case CREATE, MODIFY -> handleChange(changed);
+                case DELETE -> {
+                }
+            }
+        });
 
-            Log.info("AssetPlacementFixer background sync is actively watching for changes.");
-        }
+        Log.info("AssetPlacementFixer background sync is actively watching for changes.");
     }
 
-    public static void stopSync() {
-        synchronized (LOCK) {
-            watchService.stop();
-            Log.info("AssetPlacementFixer watcher stopped.");
-        }
+    private synchronized void stop() {
+        watchService.stop();
+        Log.info("AssetPlacementFixer watcher stopped.");
     }
 
-    private static boolean isIgnoredPath(Path path) {
+    private boolean isIgnoredPath(Path path) {
         return isWithin(path, fxProjectsDir);
     }
 
-    private static void handleChange(Path changed) {
+    private void handleChange(Path changed) {
         try {
             if (changed == null || !Files.exists(changed) || isIgnoredPath(changed)) {
                 return;
@@ -124,7 +150,7 @@ public class AssetPlacementFixer {
         }
     }
 
-    private static void performFullCorrection() throws IOException {
+    private void performFullCorrection() throws IOException {
         if (!Files.exists(assetsRoot)) {
             return;
         }
@@ -133,7 +159,7 @@ public class AssetPlacementFixer {
         cleanupIllegalFxSubfolders();
     }
 
-    private static void correctDirectoryTree(Path start) throws IOException {
+    private void correctDirectoryTree(Path start) throws IOException {
         if (!Files.exists(start)) {
             return;
         }
@@ -167,7 +193,7 @@ public class AssetPlacementFixer {
         }
     }
 
-    private static void correctFile(Path file) throws IOException {
+    private void correctFile(Path file) throws IOException {
         if (!Files.exists(file) || !Files.isRegularFile(file) || isIgnoredPath(file)) {
             return;
         }
@@ -189,7 +215,7 @@ public class AssetPlacementFixer {
         }
     }
 
-    private static void correctFxFile(Path file) throws IOException {
+    private void correctFxFile(Path file) throws IOException {
         if (file.getParent() != null && file.getParent().equals(fxDir)) {
             return;
         }
@@ -198,7 +224,7 @@ public class AssetPlacementFixer {
         movePreservingNoConflict(file, fxDir);
     }
 
-    private static void correctFxProjFile(Path file) throws IOException {
+    private void correctFxProjFile(Path file) throws IOException {
         if (file.getParent() != null && file.getParent().equals(fxProjectsDir)) {
             return;
         }
@@ -207,7 +233,7 @@ public class AssetPlacementFixer {
         movePreservingNoConflict(file, fxProjectsDir);
     }
 
-    private static void correctFlatPlacement(Path file, Path targetRoot, String label) throws IOException {
+    private void correctFlatPlacement(Path file, Path targetRoot, String label) throws IOException {
         if (isWithin(file, targetRoot)) {
             return;
         }
@@ -216,7 +242,7 @@ public class AssetPlacementFixer {
         movePreservingNoConflict(file, targetRoot);
     }
 
-    private static void movePreservingNoConflict(Path file, Path targetDir) throws IOException {
+    private void movePreservingNoConflict(Path file, Path targetDir) throws IOException {
         if (!Files.exists(targetDir)) {
             Files.createDirectories(targetDir);
         }
@@ -261,7 +287,7 @@ public class AssetPlacementFixer {
         return root != null && (path.equals(root) || path.startsWith(root));
     }
 
-    private static void cleanupIllegalFxSubfolders() throws IOException {
+    private void cleanupIllegalFxSubfolders() throws IOException {
         if (!Files.exists(fxDir)) {
             return;
         }
@@ -275,7 +301,7 @@ public class AssetPlacementFixer {
         }
     }
 
-    private static void cleanupIllegalFxSubfolder(Path subfolder) {
+    private void cleanupIllegalFxSubfolder(Path subfolder) {
         try {
             if (!Files.exists(subfolder) || !Files.isDirectory(subfolder)) {
                 return;
