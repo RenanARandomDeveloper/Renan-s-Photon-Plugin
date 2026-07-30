@@ -11,7 +11,7 @@ neoforge-1.21.1:
            compileOnly 'dev.vfyjxf:taffy:1.1.4'
            compileOnly 'org.projectlombok:lombok:1.18.46'
            annotationProcessor 'org.projectlombok:lombok:1.18.46'
-           implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:2.2.30:all') { transitive = false }
+           implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:2.2.31:all') { transitive = false }
            implementation('com.lowdragmc.photon:photon-neoforge-1.21.1:2.2.1:all') { transitive = false }
            implementation('com.lowdragmc.kilagraph:kilagraph-neoforge-1.21.1:21.1.0.7') { transitive = false }
         }

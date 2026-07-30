@@ -960,15 +960,29 @@ public final class ResourceMenuCommon {
         return false;
     }
 
+    private static void removeTabsByTitle(JTabbedPane tabbedPane, String title, Component keep) {
+        if (tabbedPane == null || title == null) return;
+        for (int i = tabbedPane.getTabCount() - 1; i >= 0; i--) {
+            Component component = tabbedPane.getComponentAt(i);
+            if (component == keep) continue;
+            if (title.equals(tabbedPane.getTitleAt(i))) {
+                tabbedPane.removeTabAt(i);
+            }
+        }
+    }
+
     public static JPanel setupResourceTab(MCreator mcreator, JPanel panelInstance, String tabTitle, ResourceTabPanelFactory panelFactory) {
         Container resourcesPan = resolveResourcesPan(mcreator);
         if (resourcesPan == null) return panelInstance;
 
         JTabbedPane resourceTabs = findResourceTabbedPane(mcreator);
-        if (panelInstance != null) {
-            if (isTabPresent(resourceTabs, panelInstance)) return panelInstance;
-            panelInstance = null;
+
+        if (panelInstance != null && isTabPresent(resourceTabs, panelInstance)) {
+            removeTabsByTitle(resourceTabs, tabTitle, panelInstance);
+            return panelInstance;
         }
+
+        removeTabsByTitle(resourceTabs, tabTitle, null);
 
         JPanel panel = panelFactory.create(mcreator);
         boolean addedViaNewApi = false;
@@ -987,6 +1001,7 @@ public final class ResourceMenuCommon {
 
         if (addedViaNewApi) {
             resourceTabs = findResourceTabbedPane(mcreator);
+            removeTabsByTitle(resourceTabs, tabTitle, panel);
         }
         if (resourceTabs != null) {
             resourceTabs.revalidate();
@@ -996,18 +1011,18 @@ public final class ResourceMenuCommon {
     }
 
     public static void removeResourceTab(MCreator mcreator, JPanel panelInstance) {
-        if (panelInstance == null) return;
-
         JTabbedPane resourceTabs = findResourceTabbedPane(mcreator);
-        if (resourceTabs != null) {
+        if (resourceTabs == null) return;
+
+        if (panelInstance != null) {
             for (int i = 0; i < resourceTabs.getTabCount(); i++) {
                 if (resourceTabs.getComponentAt(i) == panelInstance) {
                     resourceTabs.remove(i);
-                    break;
+                    resourceTabs.revalidate();
+                    resourceTabs.repaint();
+                    return;
                 }
             }
-            resourceTabs.revalidate();
-            resourceTabs.repaint();
         }
     }
 

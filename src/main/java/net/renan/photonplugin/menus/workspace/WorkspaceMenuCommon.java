@@ -4,6 +4,7 @@ import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
 import net.mcreator.ui.init.UIRES;
 import net.renan.photonplugin.Log;
+import net.renan.photonplugin.PluginMetadata;
 import net.renan.photonplugin.backup.BackupCommon;
 
 import javax.swing.*;
@@ -20,7 +21,6 @@ import java.util.TimerTask;
 
 public final class WorkspaceMenuCommon {
     private static final String MENU_NAME = "PhotonPluginMenu";
-    private static final String PLUGIN_VERSION = "1.1";
     private static final String PLUGIN_AUTHOR = "Renan";
 
     private static Icon scaleIconTo(Icon icon, int size) {
@@ -755,7 +755,7 @@ public final class WorkspaceMenuCommon {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
 
         JLabel pluginVersionLabel = new JLabel(
-                L10N.t("plugin.photon.workspacemenu.about.plugin_version", PLUGIN_VERSION));
+                L10N.t("plugin.photon.workspacemenu.about.plugin_version", PluginMetadata.getPluginVersion()));
         JLabel authorLabel = new JLabel(L10N.t("plugin.photon.workspacemenu.about.author", PLUGIN_AUTHOR));
         JLabel componentVersionLabel = new JLabel(componentLabel + ": " + componentVersion);
         JLabel libVersionLabel = new JLabel(libLabel + ": " + libVersion);
