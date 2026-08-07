@@ -2,7 +2,7 @@ package net.renan.photonplugin.workspaceclass.create;
 
 import net.mcreator.ui.MCreator;
 
-public class WorkspaceClassGeneratorNeo extends WorkspaceClassGeneratorCommon {
+public class WorkspaceClassGeneratorNeo extends WorkspaceClassGenerator {
 
     private static final String TEMPLATE_ROOT = "/neoforge-1.21.1/templates/";
 

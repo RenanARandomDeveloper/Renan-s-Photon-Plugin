@@ -21,12 +21,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public abstract class WorkspaceClassGeneratorCommon {
+public abstract class WorkspaceClassGenerator {
 
     protected final MCreator mcreator;
     protected final Configuration freemarkerConfig;
 
-    protected WorkspaceClassGeneratorCommon(MCreator mcreator, String templateRoot) {
+    protected WorkspaceClassGenerator(MCreator mcreator, String templateRoot) {
         this.mcreator = mcreator;
         this.freemarkerConfig = buildFreemarkerConfiguration(templateRoot);
     }
