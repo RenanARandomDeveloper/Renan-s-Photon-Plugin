@@ -81,7 +81,7 @@ public class Photon extends JavaPlugin {
                 FolderCreatorNeo.createStructure(mcFolder);
                 CopyFilesToAssetsFolderNeo.startSync(mcFolder);
                 WorkspaceClassGeneratorNeo.generate(mcreator);
-                WorkspaceClassGenerationGuard.scheduleVerification(mcreator, () -> WorkspaceClassGeneratorNeo.generate(mcreator));
+                WorkspaceClassGenerationGuard.startWatching(mcreator, () -> WorkspaceClassGeneratorNeo.generate(mcreator));
                 ResourceMenusNeo.setupMenu(mcreator);
                 WorkspaceMenuNeo.setupMenu(mcreator);
                 BackupNeo.setup(mcreator);
@@ -93,7 +93,7 @@ public class Photon extends JavaPlugin {
                 }
 
                 WorkspaceClassGeneratorForge.generate(mcreator);
-                WorkspaceClassGenerationGuard.scheduleVerification(mcreator, () -> WorkspaceClassGeneratorForge.generate(mcreator));
+                WorkspaceClassGenerationGuard.startWatching(mcreator, () -> WorkspaceClassGeneratorForge.generate(mcreator));
                 FolderCreatorForge.createStructure(mcFolder);
                 CopyFilesToAssetsFolderForge.startSync(mcFolder);
                 ResourceMenusForge.setupMenu(mcreator);
@@ -113,6 +113,7 @@ public class Photon extends JavaPlugin {
         try {
             Generator generator = mcreator.getGenerator();
             GeneratorFlavor flavor = generator.getGeneratorConfiguration().getGeneratorFlavor();
+            WorkspaceClassGenerationGuard.stopWatching(mcreator);
             WorkspaceClassRemover.remove(mcreator);
 
             info("Deactivating generator flavor: " + flavor.name());

@@ -1,30 +1,17 @@
 package net.renan.photonplugin;
 
+import net.mcreator.ui.MCreator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.io.Writer;
+import java.awt.*;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedList;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -50,6 +37,7 @@ public final class Log {
 
     private static final class Session {
         final List<String> buffer = Collections.synchronizedList(new LinkedList<>());
+        final List<Runnable> listeners = Collections.synchronizedList(new ArrayList<>());
         volatile File logDirectory;
         volatile File logsFolder;
         volatile File logFile;
@@ -92,9 +80,57 @@ public final class Log {
         }
     }
 
+    private static Session sessionFor(File workspaceFolder) {
+        if (workspaceFolder == null) {
+            return UNBOUND;
+        }
+        return SESSIONS.computeIfAbsent(sessionKey(workspaceFolder), key -> createSession(workspaceFolder));
+    }
+
+    public static <T> T withWorkspace(File workspaceFolder, java.util.function.Supplier<T> task) {
+        Session previous = CURRENT.get();
+        CURRENT.set(sessionFor(workspaceFolder));
+        try {
+            return task.get();
+        } finally {
+            if (previous != null) {
+                CURRENT.set(previous);
+            } else {
+                CURRENT.remove();
+            }
+        }
+    }
+
+    public static void withWorkspace(File workspaceFolder, Runnable task) {
+        withWorkspace(workspaceFolder, () -> {
+            task.run();
+            return null;
+        });
+    }
+
     private static Session current() {
-        Session session = CURRENT.get();
-        return session != null ? session : UNBOUND;
+        Session bound = CURRENT.get();
+        if (bound != null) {
+            return bound;
+        }
+
+        File workspaceFolder = activeWorkspaceFolder();
+        if (workspaceFolder == null) {
+            return UNBOUND;
+        }
+
+        return SESSIONS.computeIfAbsent(sessionKey(workspaceFolder), key -> createSession(workspaceFolder));
+    }
+
+    private static File activeWorkspaceFolder() {
+        try {
+            Window activeWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
+            if (activeWindow instanceof MCreator mcreator) {
+                return mcreator.getWorkspaceFolder();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private static Session createSession(File workspaceFolder) {
@@ -311,6 +347,83 @@ public final class Log {
         return current().logFile;
     }
 
+    public static File getLogFileFor(File workspaceFolder) {
+        return sessionFor(workspaceFolder).logFile;
+    }
+
+    public static File getLogsFolderFor(File workspaceFolder) {
+        return sessionFor(workspaceFolder).logsFolder;
+    }
+
+    public static List<File> listAvailableLogFilesFor(File workspaceFolder) {
+        List<File> result = new ArrayList<>();
+        File logsFolder = sessionFor(workspaceFolder).logsFolder;
+        if (logsFolder == null || !logsFolder.isDirectory()) {
+            return result;
+        }
+
+        File[] files = logsFolder.listFiles((dir, name) -> {
+            String lower = name.toLowerCase();
+            return lower.endsWith(".log") || lower.endsWith(".zip");
+        });
+        if (files == null) {
+            return result;
+        }
+
+        result.addAll(Arrays.asList(files));
+        result.sort(Comparator.comparing(Log::getLogCreationDate).reversed());
+        return result;
+    }
+
+    public static long getTotalLinesRecordedFor(File workspaceFolder) {
+        Session session = sessionFor(workspaceFolder);
+        synchronized (session.buffer) {
+            return session.totalLinesRecorded;
+        }
+    }
+
+    public static List<String> getBufferedLogSinceFor(File workspaceFolder, long sinceTotalCount) {
+        Session session = sessionFor(workspaceFolder);
+        synchronized (session.buffer) {
+            long oldestAvailableTotal = session.totalLinesRecorded - session.buffer.size();
+            if (sinceTotalCount < oldestAvailableTotal) {
+                return null;
+            }
+            int skip = (int) (sinceTotalCount - oldestAvailableTotal);
+            if (skip >= session.buffer.size()) {
+                return List.of();
+            }
+            return new ArrayList<>(session.buffer.subList(skip, session.buffer.size()));
+        }
+    }
+
+    public static String readPersistedLogFor(File workspaceFolder) {
+        Session session = sessionFor(workspaceFolder);
+        File logFile = session.logFile;
+        if (logFile != null && logFile.exists()) {
+            try {
+                return Files.readString(logFile.toPath());
+            } catch (IOException e) {
+                LOGGER.error("[Photon] Failed to read log file", e);
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        synchronized (session.buffer) {
+            for (String line : session.buffer) {
+                sb.append(line).append(System.lineSeparator());
+            }
+        }
+        return sb.toString();
+    }
+
+
+    public static AutoCloseable addLogListener(File workspaceFolder, Runnable onNewLine) {
+        Session session = sessionFor(workspaceFolder);
+        session.listeners.add(onNewLine);
+        return () -> session.listeners.remove(onNewLine);
+    }
+
     public static List<String> getBufferedLog() {
         Session session = current();
         synchronized (session.buffer) {
@@ -377,6 +490,20 @@ public final class Log {
         }
 
         writeToFile(session, line);
+        notifyListeners(session);
+    }
+
+    private static void notifyListeners(Session session) {
+        if (session.listeners.isEmpty()) {
+            return;
+        }
+        for (Runnable listener : new ArrayList<>(session.listeners)) {
+            try {
+                listener.run();
+            } catch (Exception e) {
+                LOGGER.error("[Photon] Log listener threw an exception", e);
+            }
+        }
     }
 
     private static synchronized void writeToFile(Session session, String line) {

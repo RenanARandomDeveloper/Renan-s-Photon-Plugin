@@ -7,9 +7,8 @@ neoforge-1.21.1:
             }
         }
         dependencies {
-           implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:2.2.33')
-           implementation('com.lowdragmc.photon:photon-neoforge-1.21.1:2.2.3')
-           implementation('com.lowdragmc.kilagraph:kilagraph-neoforge-1.21.1:21.1.0.9')
+           implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:2.2.33:all') { transitive = false }
+           implementation('com.lowdragmc.photon:photon-neoforge-1.21.1:2.2.3:all') { transitive = false }
         }
   update_files:
     - ~
