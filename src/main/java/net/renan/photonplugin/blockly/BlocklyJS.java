@@ -5,7 +5,7 @@ import net.mcreator.ui.MCreator;
 import net.mcreator.ui.dialogs.DataListSelectorDialog;
 import net.mcreator.ui.init.L10N;
 import net.mcreator.workspace.Workspace;
-import net.renan.photonplugin.Log;
+import net.renan.photonplugin.log.Log;
 
 import javax.annotation.Nonnull;
 import javax.swing.*;
@@ -59,68 +59,60 @@ public class BlocklyJS {
     }
 
     private void openSelectorNewApi(Consumer<String[]> callback) {
-        if (!dialogOpen.compareAndSet(false, true)) {
-            Log.warn("FX selector is already open - duplicate request ignored.");
-            if (callback != null) {
-                callback.accept(buildDefaultRetval());
-            }
-            return;
-        }
+        if (!tryAcquireDialogLock(callback)) return;
 
         Log.info("Opening FX selector dialog (New API)...");
         SwingUtilities.invokeLater(() -> {
-            String[] retval = buildDefaultRetval();
-            try {
-                bringMCreatorToFront();
-                DataListEntry selected = openDialog();
-                if (selected != null) {
-                    retval[0] = selected.getName();
-                    retval[1] = selected.getReadableName();
-                    Log.info("Selector selection finished (New API). Entry selected: %s (%s)", retval[0], retval[1]);
-                } else {
-                    Log.info("Selector selection canceled by user.");
-                }
-            } catch (Exception e) {
-                Log.error("Error in selector (New API)", e);
-            } finally {
-                dialogOpen.set(false);
-                if (callback != null) {
-                    callback.accept(retval);
-                }
+            String[] retval = runSelectorDialog("New API");
+            dialogOpen.set(false);
+            if (callback != null) {
+                callback.accept(retval);
             }
         });
     }
 
     private void openSelectorLegacyApi(Object jsCallback) {
-        if (!dialogOpen.compareAndSet(false, true)) {
-            Log.warn("FX selector is already open - duplicate request ignored.");
-            invokeJsCallback(jsCallback, buildDefaultRetval());
-            return;
-        }
+        Consumer<String[]> deliver = retval -> invokeJsCallback(jsCallback, retval);
+        if (!tryAcquireDialogLock(deliver)) return;
 
         Log.info("Opening FX selector dialog (Legacy API)...");
         FXCompat.runOnFxThreadOrDirect(() -> SwingUtilities.invokeLater(() -> {
-            String[] retval = buildDefaultRetval();
-            try {
-                bringMCreatorToFront();
-                DataListEntry selected = openDialog();
-                if (selected != null) {
-                    retval[0] = selected.getName();
-                    retval[1] = selected.getReadableName();
-                    Log.info("Selector selection finished (Legacy API). Entry selected: %s (%s)", retval[0], retval[1]);
-                } else {
-                    Log.info("Selector selection canceled by user (Legacy API).");
-                }
-            } catch (Exception e) {
-                Log.error("Error in selector (Legacy API)", e);
-            } finally {
-                dialogOpen.set(false);
-                platformExitNestedEventLoop(nestedLoopKey, retval);
-            }
+            String[] retval = runSelectorDialog("Legacy API");
+            dialogOpen.set(false);
+            platformExitNestedEventLoop(nestedLoopKey, retval);
         }));
 
         String[] retval = platformEnterNestedEventLoop(nestedLoopKey, buildDefaultRetval());
-        invokeJsCallback(jsCallback, retval);
+        deliver.accept(retval);
+    }
+
+    private boolean tryAcquireDialogLock(Consumer<String[]> onBusyCallback) {
+        if (dialogOpen.compareAndSet(false, true)) {
+            return true;
+        }
+        Log.warn("FX selector is already open - duplicate request ignored.");
+        if (onBusyCallback != null) {
+            onBusyCallback.accept(buildDefaultRetval());
+        }
+        return false;
+    }
+
+    private String[] runSelectorDialog(String apiLabel) {
+        String[] retval = buildDefaultRetval();
+        try {
+            bringMCreatorToFront();
+            DataListEntry selected = openDialog();
+            if (selected != null) {
+                retval[0] = selected.getName();
+                retval[1] = selected.getReadableName();
+                Log.info("Selector selection finished (%s). Entry selected: %s (%s)", apiLabel, retval[0], retval[1]);
+            } else {
+                Log.info("Selector selection canceled by user (%s).", apiLabel);
+            }
+        } catch (Exception e) {
+            Log.error("Error in selector (" + apiLabel + ")", e);
+        }
+        return retval;
     }
 
     private static void platformExitNestedEventLoop(Object key, Object value) {

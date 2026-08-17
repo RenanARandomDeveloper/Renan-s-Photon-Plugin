@@ -12,14 +12,16 @@ import net.renan.photonplugin.backup.BackupNeo;
 import net.renan.photonplugin.blockly.BlocklyListener;
 import net.renan.photonplugin.copiers.CopyFilesToAssetsFolderForge;
 import net.renan.photonplugin.copiers.CopyFilesToAssetsFolderNeo;
-import net.renan.photonplugin.fixers.AssetPlacementFixer;
+import net.renan.photonplugin.fixers.AssetPlacement;
 import net.renan.photonplugin.fixers.ForgeMixinsExtra;
 import net.renan.photonplugin.foldercreators.FolderCreatorForge;
 import net.renan.photonplugin.foldercreators.FolderCreatorNeo;
+import net.renan.photonplugin.log.Log;
 import net.renan.photonplugin.menus.resource.forge.ResourceMenusForge;
 import net.renan.photonplugin.menus.resource.neo.ResourceMenusNeo;
 import net.renan.photonplugin.menus.workspace.WorkspaceMenuForge;
 import net.renan.photonplugin.menus.workspace.WorkspaceMenuNeo;
+import net.renan.photonplugin.workspaceclass.WorkspaceClassGenerationGuard;
 import net.renan.photonplugin.workspaceclass.WorkspaceClassRemover;
 import net.renan.photonplugin.workspaceclass.create.WorkspaceClassGeneratorForge;
 import net.renan.photonplugin.workspaceclass.create.WorkspaceClassGeneratorNeo;
@@ -46,7 +48,6 @@ public class Photon extends JavaPlugin {
                 }
 
                 info("Workspace loaded with Photon dependency.");
-                WorkspaceRegistry.register(mcreator, mcreator.getWorkspaceFolder());
                 activateFlavor(mcreator);
             }));
 
@@ -54,7 +55,6 @@ public class Photon extends JavaPlugin {
                 MCreator mcreator = event.getMCreator();
                 if (isPhotonDependency(mcreator)) {
                     info("Workspace refactored with Photon dependency.");
-                    WorkspaceRegistry.register(mcreator, mcreator.getWorkspaceFolder());
                     activateFlavor(mcreator);
                 } else {
                     info("Workspace refactored without Photon dependency.");
@@ -78,10 +78,11 @@ public class Photon extends JavaPlugin {
             info("Activating generator flavor: " + flavor.name());
 
             if (flavor == GeneratorFlavor.NEOFORGE) {
-                AssetPlacementFixer.startSync(mcFolder);
+                AssetPlacement.startSync(mcFolder);
                 FolderCreatorNeo.createStructure(mcFolder);
                 CopyFilesToAssetsFolderNeo.startSync(mcFolder);
                 WorkspaceClassGeneratorNeo.generate(mcreator);
+                WorkspaceClassGenerationGuard.startWatching(mcreator, () -> WorkspaceClassGeneratorNeo.generate(mcreator));
                 ResourceMenusNeo.setupMenu(mcreator);
                 WorkspaceMenuNeo.setupMenu(mcreator);
                 BackupNeo.setup(mcreator);
@@ -93,6 +94,7 @@ public class Photon extends JavaPlugin {
                 }
 
                 WorkspaceClassGeneratorForge.generate(mcreator);
+                WorkspaceClassGenerationGuard.startWatching(mcreator, () -> WorkspaceClassGeneratorForge.generate(mcreator));
                 FolderCreatorForge.createStructure(mcFolder);
                 CopyFilesToAssetsFolderForge.startSync(mcFolder);
                 ResourceMenusForge.setupMenu(mcreator);
@@ -112,12 +114,13 @@ public class Photon extends JavaPlugin {
         try {
             Generator generator = mcreator.getGenerator();
             GeneratorFlavor flavor = generator.getGeneratorConfiguration().getGeneratorFlavor();
+            WorkspaceClassGenerationGuard.stopWatching(mcreator);
             WorkspaceClassRemover.remove(mcreator);
 
             info("Deactivating generator flavor: " + flavor.name());
 
             if (flavor == GeneratorFlavor.NEOFORGE) {
-                AssetPlacementFixer.stopSync(mcFolder);
+                AssetPlacement.stopSync(mcFolder);
                 CopyFilesToAssetsFolderNeo.stopSync(mcFolder);
                 ResourceMenusNeo.removeMenu(mcreator);
                 WorkspaceMenuNeo.removeMenu(mcreator);
@@ -133,7 +136,6 @@ public class Photon extends JavaPlugin {
         } catch (Throwable t) {
             error("Failed to cleanly deactivate flavor configuration.", t);
         } finally {
-            WorkspaceRegistry.unregister(mcreator);
             Log.releaseWorkspace(mcFolder);
         }
     }

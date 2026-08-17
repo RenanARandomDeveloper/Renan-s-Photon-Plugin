@@ -1,6 +1,6 @@
 package net.renan.photonplugin.blockly;
 
-import net.renan.photonplugin.Log;
+import net.renan.photonplugin.log.Log;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +34,7 @@ public final class FXListManager {
     private static CopyOnWriteArrayList<String> entriesFor(File workspaceRoot) {
         String key = workspaceKey(workspaceRoot);
         if (key == null) {
+            Log.warn("FXListManager called with a null/unresolvable workspace root; returning an empty, non-persistent entry list.");
             return new CopyOnWriteArrayList<>();
         }
         return ENTRIES_BY_WORKSPACE.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>());
@@ -68,7 +69,7 @@ public final class FXListManager {
             return;
         }
 
-        List<String> found = new ArrayList<>();
+        List<String> found = new ArrayList<>(children.length);
         for (File child : children) {
             if (child.isDirectory()) continue;
             String baseName = baseNameOf(child.getName());

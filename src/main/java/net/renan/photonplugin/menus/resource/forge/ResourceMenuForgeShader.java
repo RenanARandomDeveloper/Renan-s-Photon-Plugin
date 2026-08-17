@@ -8,8 +8,11 @@ import net.mcreator.ui.dialogs.file.FileChooserType;
 import net.mcreator.ui.dialogs.file.FileDialogs;
 import net.mcreator.ui.init.L10N;
 import net.mcreator.ui.init.UIRES;
-import net.renan.photonplugin.Log;
-import net.renan.photonplugin.menus.resource.common.ResourceMenuCommon;
+import net.renan.photonplugin.log.Log;
+import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
+import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 
 import javax.swing.*;
 import java.awt.*;
@@ -19,7 +22,23 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import static net.renan.photonplugin.menus.resource.common.ResourceMenuCommon.*;
+import static net.renan.photonplugin.menus.resource.core.actions.CloneAction.buildCloneButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.CreateFolderAction.buildCreateFolderButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.DeleteAction.buildDeleteButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.ExportAction.buildExportButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.FilterBar.buildFilterBarForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.MoveAction.buildMoveButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.RenameAction.buildRenameButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver.autoRenameNotice;
+import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_CANCEL;
+import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_SKIP;
+import static net.renan.photonplugin.menus.resource.core.naming.FileNameRules.isValidStrictFileName;
+import static net.renan.photonplugin.menus.resource.core.naming.FileNameRules.requiresStrictNaming;
+import static net.renan.photonplugin.menus.resource.core.support.DirectoryWatcher.attachDirectoryWatcher;
+import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.runFileTaskInBackground;
+import static net.renan.photonplugin.menus.resource.core.support.IconScaler.scaleIconTo;
+import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolBar;
+import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolbarButton;
 
 public class ResourceMenuForgeShader {
     private static final String SHADER_FSH_EXTENSION = ".fsh";
@@ -29,7 +48,7 @@ public class ResourceMenuForgeShader {
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter) {
 
-        ResourceMenuCommon.FXBrowserPanel browser = new ResourceMenuCommon.FXBrowserPanel(List.of(targetDirGetter), SHADER_FSH_EXTENSION,
+        FXBrowserPanel browser = new FXBrowserPanel(List.of(targetDirGetter), SHADER_FSH_EXTENSION,
                 Set.of(SHADER_FSH_EXTENSION, SHADER_JSON_EXTENSION),
                 file -> {
                     try {
@@ -71,7 +90,7 @@ public class ResourceMenuForgeShader {
         return selected != null ? selected : new File[0];
     }
 
-    private static JButton buildShaderImportButton(MCreator mcreator, ResourceMenuCommon.FXBrowserPanel browser,
+    private static JButton buildShaderImportButton(MCreator mcreator, FXBrowserPanel browser,
                                                    Supplier<File> targetDirGetter) {
         JButton button = createToolbarButton(L10N.t("plugin.photon.resourcemenu.import"), "16px_photon.import");
         button.addActionListener(e -> {

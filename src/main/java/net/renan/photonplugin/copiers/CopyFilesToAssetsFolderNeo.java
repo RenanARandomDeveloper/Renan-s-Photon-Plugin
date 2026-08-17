@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class CopyFilesToAssetsFolderNeo extends CopyFilesToAssetsFolderCommon {
+public class CopyFilesToAssetsFolderNeo extends CopyFilesToAssetsFolder {
     private static final String FX_STAGING_FOLDER = "fx_projects";
     private static final String EDITOR_LAYOUTS_FOLDER = "editor_layouts";
 

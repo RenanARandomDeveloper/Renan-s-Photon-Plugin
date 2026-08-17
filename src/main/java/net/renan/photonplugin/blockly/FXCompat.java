@@ -1,7 +1,7 @@
 package net.renan.photonplugin.blockly;
 
 import net.mcreator.ui.MCreator;
-import net.renan.photonplugin.Log;
+import net.renan.photonplugin.log.Log;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -54,6 +54,20 @@ final class FXCompat {
             "javafx.concurrent.Worker$State",
             () -> forNameAnyLoader("javafx.concurrent.Worker$State"));
 
+    /** O enum constant {@code Worker.State.SUCCEEDED}, resolvido e memorizado uma única vez. */
+    static final LazyResolution<Object> WORKER_STATE_SUCCEEDED = new LazyResolution<>(
+            "javafx.concurrent.Worker$State.SUCCEEDED",
+            () -> {
+                Class<?> stateClass = WORKER_STATE_CLASS.get();
+                if (stateClass == null) return null;
+                for (Object constant : stateClass.getEnumConstants()) {
+                    if ("SUCCEEDED".equals(((Enum<?>) constant).name())) {
+                        return constant;
+                    }
+                }
+                throw new NoSuchFieldException("SUCCEEDED constant not found on Worker.State");
+            });
+
     static final LazyResolution<Class<?>> CHANGE_LISTENER_CLASS = new LazyResolution<>(
             "javafx.beans.value.ChangeListener",
             () -> forNameAnyLoader("javafx.beans.value.ChangeListener"));
@@ -92,9 +106,9 @@ final class FXCompat {
             Method stateProperty = WORKER_STATE_PROPERTY.get();
             Class<?> changeListenerClass = CHANGE_LISTENER_CLASS.get();
             Method addListener = OBSERVABLE_VALUE_ADD_LISTENER.get();
-            Class<?> stateClass = WORKER_STATE_CLASS.get();
+            Object succeeded = WORKER_STATE_SUCCEEDED.get();
             if (getLoadWorker == null || stateProperty == null || changeListenerClass == null
-                    || addListener == null || stateClass == null) {
+                    || addListener == null || succeeded == null) {
                 return false;
             }
 
@@ -103,16 +117,6 @@ final class FXCompat {
 
             Object stateObservable = stateProperty.invoke(worker);
             if (stateObservable == null) return false;
-
-            Object succeededState = null;
-            for (Object constant : stateClass.getEnumConstants()) {
-                if ("SUCCEEDED".equals(((Enum<?>) constant).name())) {
-                    succeededState = constant;
-                    break;
-                }
-            }
-            if (succeededState == null) return false;
-            final Object succeeded = succeededState;
 
             Object listenerProxy = Proxy.newProxyInstance(
                     changeListenerClass.getClassLoader(),

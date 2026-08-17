@@ -1,4 +1,19 @@
 ---
+neoforge-26.1.2:
+  gradle: |
+      repositories {
+            maven {
+                url = "https://maven.firstdark.dev/snapshots"
+            }
+        }
+          dependencies {
+          compileOnly 'org.appliedenergistics.yoga:yoga:1.0.0'
+          compileOnly 'dev.vfyjxf:taffy:1.1.4'
+          compileOnly 'org.projectlombok:lombok:1.18.46'
+          annotationProcessor 'org.projectlombok:lombok:1.18.46'
+          implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-26.1:26.1.2.35') { transitive = false }
+          implementation('com.lowdragmc.photon:photon-neoforge-26.1:26.1.2.0') { transitive = false }
+        }
 neoforge-1.21.1:
   gradle: |
     repositories {
@@ -7,13 +22,12 @@ neoforge-1.21.1:
             }
         }
         dependencies {
-           compileOnly 'org.appliedenergistics.yoga:yoga:1.0.0'
-           compileOnly 'dev.vfyjxf:taffy:1.1.4'
-           compileOnly 'org.projectlombok:lombok:1.18.46'
-           annotationProcessor 'org.projectlombok:lombok:1.18.46'
-           implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:2.2.31:all') { transitive = false }
-           implementation('com.lowdragmc.photon:photon-neoforge-1.21.1:2.2.1:all') { transitive = false }
-           implementation('com.lowdragmc.kilagraph:kilagraph-neoforge-1.21.1:21.1.0.7') { transitive = false }
+          compileOnly 'org.appliedenergistics.yoga:yoga:1.0.0'
+          compileOnly 'dev.vfyjxf:taffy:1.1.4'
+          compileOnly 'org.projectlombok:lombok:1.18.46'
+          annotationProcessor 'org.projectlombok:lombok:1.18.46'
+          implementation('com.lowdragmc.ldlib2:ldlib2-neoforge-1.21.1:2.2.35:all') { transitive = false }
+          implementation('com.lowdragmc.photon:photon-neoforge-1.21.1:2.2.4:all') { transitive = false }
         }
   update_files:
     - ~

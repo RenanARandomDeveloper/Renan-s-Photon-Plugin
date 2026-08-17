@@ -7,8 +7,13 @@ import net.mcreator.ui.dialogs.file.FileChooserType;
 import net.mcreator.ui.dialogs.file.FileDialogs;
 import net.mcreator.ui.init.L10N;
 import net.mcreator.ui.init.UIRES;
-import net.renan.photonplugin.Log;
-import net.renan.photonplugin.menus.resource.common.ResourceMenuCommonModel;
+import net.renan.photonplugin.log.Log;
+import net.renan.photonplugin.menus.resource.common.ResourceMenuModel;
+import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
+import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
+import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 
 import javax.swing.*;
 import java.io.File;
@@ -18,8 +23,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import static net.renan.photonplugin.menus.resource.common.ResourceMenuCommon.*;
-import static net.renan.photonplugin.menus.resource.common.ResourceMenuCommonModel.*;
+import static net.renan.photonplugin.menus.resource.common.ResourceMenuModel.*;
+import static net.renan.photonplugin.menus.resource.core.actions.CreateFolderAction.buildCreateFolderButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.ExportAction.buildExportButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.FilterBar.buildFilterBarForBrowser;
+import static net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver.autoRenameNotice;
+import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_CANCEL;
+import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_SKIP;
+import static net.renan.photonplugin.menus.resource.core.fs.FileOps.renameFile;
+import static net.renan.photonplugin.menus.resource.core.naming.FileNameRules.isValidStrictFileName;
+import static net.renan.photonplugin.menus.resource.core.naming.FileNameRules.requiresStrictNaming;
+import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.onEdt;
+import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.runFileTaskInBackground;
+import static net.renan.photonplugin.menus.resource.core.support.IconScaler.scaleIconTo;
+import static net.renan.photonplugin.menus.resource.core.support.MenuMessages.buildItemLabel;
+import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolbarButton;
 
 public final class ResourceMenuNeoModel {
     private ResourceMenuNeoModel() {}
@@ -42,7 +60,7 @@ public final class ResourceMenuNeoModel {
                     try {
                         if (file.getName().toLowerCase().endsWith(JSON_EXTENSION)) {
                             try { return scaleIconTo(UIRES.get("64px_photon.json"), 64); }
-                            catch (Exception ignored) { /* fall through to the default model icon */ }
+                            catch (Exception ignored) {}
                         }
                         return scaleIconTo(UIRES.get("64px_photon.obj"), 64);
                     } catch (Exception ignored) { return null; }
@@ -90,8 +108,6 @@ public final class ResourceMenuNeoModel {
 
     private static File[] showModelImportDialog(MCreator mcreator) {
         File[] selected = FileDialogs.getFileChooserDialog(mcreator, FileChooserType.OPEN, true, null,
-                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.model.import.filter.obj"), "*" + OBJ_EXTENSION),
-                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.model.import.filter.json"), "*" + JSON_EXTENSION),
                 new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.model.import.filter.both"),
                         "*" + OBJ_EXTENSION, "*" + JSON_EXTENSION));
         return selected != null ? selected : new File[0];
@@ -131,7 +147,7 @@ public final class ResourceMenuNeoModel {
                     : 0;
             InvalidNameResolver objNameResolver = new InvalidNameResolver(objInvalidNameCount);
 
-            boolean strictJson = requiresStrictNaming(JSON_EXTENSION);
+            boolean strictJson = true;
             int jsonConflictCount = (int) jsonSources.stream()
                     .filter(src -> new File(jsonTargetDir, src.getName()).exists())
                     .count();
@@ -312,10 +328,10 @@ public final class ResourceMenuNeoModel {
     }
 
     private static File mirrorJsonFileFor(File modelsRoot, File objFile) {
-        return ResourceMenuCommonModel.mirrorJsonFileFor(modelsRoot, modelsRoot, objFile);
+        return ResourceMenuModel.mirrorJsonFileFor(modelsRoot, modelsRoot, objFile);
     }
 
     private static File mirrorJsonFolderFor(File modelsRoot, File objFolder) {
-        return ResourceMenuCommonModel.mirrorJsonFolderFor(modelsRoot, modelsRoot, objFolder);
+        return ResourceMenuModel.mirrorJsonFolderFor(modelsRoot, modelsRoot, objFolder);
     }
 }

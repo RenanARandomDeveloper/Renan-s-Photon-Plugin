@@ -1,6 +1,6 @@
 package net.renan.photonplugin.fixers;
 
-import net.renan.photonplugin.Log;
+import net.renan.photonplugin.log.Log;
 
 import java.io.File;
 import java.io.IOException;

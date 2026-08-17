@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class CopyFilesToAssetsFolderForge extends CopyFilesToAssetsFolderCommon {
+public class CopyFilesToAssetsFolderForge extends CopyFilesToAssetsFolder {
     private static final String PROJECTS_STAGING_FOLDER = "projects";
 
     private static final Map<String, CopyFilesToAssetsFolderForge> INSTANCES = new ConcurrentHashMap<>();

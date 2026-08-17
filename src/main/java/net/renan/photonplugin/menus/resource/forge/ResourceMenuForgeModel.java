@@ -1,11 +1,16 @@
 package net.renan.photonplugin.menus.resource.forge;
 
 import net.mcreator.io.FileIO;
-import net.renan.photonplugin.Log;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.dialogs.file.FileDialogs;
 import net.mcreator.ui.init.L10N;
 import net.mcreator.ui.init.UIRES;
+import net.renan.photonplugin.log.Log;
+import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
+import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
+import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 
 import javax.swing.*;
 import java.io.File;
@@ -17,8 +22,21 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static net.renan.photonplugin.menus.resource.common.ResourceMenuCommon.*;
-import static net.renan.photonplugin.menus.resource.common.ResourceMenuCommonModel.*;
+import static net.renan.photonplugin.menus.resource.common.ResourceMenuModel.*;
+import static net.renan.photonplugin.menus.resource.core.actions.CreateFolderAction.buildCreateFolderButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.ExportAction.buildExportButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.FilterBar.buildFilterBarForBrowser;
+import static net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver.autoRenameNotice;
+import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_CANCEL;
+import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_SKIP;
+import static net.renan.photonplugin.menus.resource.core.fs.FileOps.renameFile;
+import static net.renan.photonplugin.menus.resource.core.naming.FileNameRules.isValidStrictFileName;
+import static net.renan.photonplugin.menus.resource.core.naming.FileNameRules.requiresStrictNaming;
+import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.onEdt;
+import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.runFileTaskInBackground;
+import static net.renan.photonplugin.menus.resource.core.support.IconScaler.scaleIconTo;
+import static net.renan.photonplugin.menus.resource.core.support.MenuMessages.buildItemLabel;
+import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolbarButton;
 
 public final class ResourceMenuForgeModel {
     private ResourceMenuForgeModel() {}

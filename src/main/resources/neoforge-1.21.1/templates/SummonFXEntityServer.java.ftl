@@ -28,6 +28,13 @@ public final class SummonFXEntityServer {
         return new EffectBuilder(entities);
     }
 
+    public enum AutoRotate {
+        NONE,
+        FORWARD,
+        LOOK,
+        XROT
+    }
+
     public static class EffectBuilder {
         private final List<Entity> entities;
         private String effectName;
@@ -37,7 +44,7 @@ public final class SummonFXEntityServer {
         private int delay = 0;
         private boolean forcedDeath = false;
         private boolean allowMulti = false;
-        private EntityEffectExecutor.AutoRotate autoRotate = EntityEffectExecutor.AutoRotate.NONE;
+        private AutoRotate autoRotate = AutoRotate.NONE;
 
         protected EffectBuilder(List<Entity> entities) {
             this.entities = entities;
@@ -78,8 +85,8 @@ public final class SummonFXEntityServer {
             return this;
         }
 
-        public EffectBuilder autoRotate(EntityEffectExecutor.AutoRotate autoRotate) {
-            this.autoRotate = autoRotate != null ? autoRotate : EntityEffectExecutor.AutoRotate.NONE;
+        public EffectBuilder autoRotate(AutoRotate autoRotate) {
+            this.autoRotate = autoRotate != null ? autoRotate : AutoRotate.NONE;
             return this;
         }
 
@@ -116,7 +123,7 @@ public final class SummonFXEntityServer {
                         effectPacket.setDelay(this.delay);
                         effectPacket.setForcedDeath(this.forcedDeath);
                         effectPacket.setAllowMulti(this.allowMulti);
-                        effectPacket.setAutoRotate(this.autoRotate);
+                        effectPacket.setAutoRotate(toPhotonAutoRotate(this.autoRotate));
                         PacketDistributor.sendToAllPlayers(effectPacket);
                     } catch (Exception e) {
                         LOGGER.error("[SummonFXEntityServer] Critical error while sending packet for effect '{}': {}", this.effectName, e.getMessage(), e);
@@ -126,5 +133,14 @@ public final class SummonFXEntityServer {
                 LOGGER.error("[SummonFXEntityServer] Failed to send packet for effect '{}'. Cause: {}", this.effectName, e.getMessage(), e);
             }
         }
+    }
+
+    private static EntityEffectExecutor.AutoRotate toPhotonAutoRotate(AutoRotate autoRotate) {
+        return switch (autoRotate) {
+            case FORWARD -> EntityEffectExecutor.AutoRotate.FORWARD;
+            case LOOK -> EntityEffectExecutor.AutoRotate.LOOK;
+            case XROT -> EntityEffectExecutor.AutoRotate.XROT;
+            default -> EntityEffectExecutor.AutoRotate.NONE;
+        };
     }
 }

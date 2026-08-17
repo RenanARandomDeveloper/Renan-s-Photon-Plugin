@@ -1,45 +1,73 @@
 (function () {
+    "use strict";
 
-    function isTrivialValueBlock(targetBlock) {
-        return targetBlock.type === "math_number" || targetBlock.type === "logic_boolean";
+    function makeValueSlot(name, labelKey, check, defaultBlockType, defaultField, defaultValue) {
+        return {
+            name: name,
+            kind: "value",
+            labelKey: labelKey,
+            check: check,
+            default: { blockType: defaultBlockType, field: defaultField, value: defaultValue }
+        };
     }
 
-    function getTrivialBlockValue(targetBlock) {
-        return targetBlock.type === "math_number" ?
-            targetBlock.getFieldValue("NUM") : targetBlock.getFieldValue("BOOL");
+    function makeNameSlot(slotName, labelKey) {
+        return {
+            name: slotName || "Name0",
+            kind: "field",
+            labelKey: labelKey || "blockly.block.photon_mutator.name",
+            field: { type: "field_photon_fx_selector" }
+        };
     }
 
-    function rememberRawValue(block, storeKey, slotName, value) {
+    function makeVector3Slots(namePrefix, labelPrefix, defaultValue) {
+        return ["X", "Y", "Z"].map(function (axis) {
+            return makeValueSlot(namePrefix + axis + "0", labelPrefix + axis.toLowerCase(), "Number", "math_number", "NUM", defaultValue);
+        });
+    }
+
+    const Slots = { value: makeValueSlot, name: makeNameSlot, vector3: makeVector3Slots };
+
+    function isTrivialValueBlock(targetBlock, slot) {
+        return !!slot.default && targetBlock.type === slot.default.blockType;
+    }
+
+    function getTrivialBlockValue(targetBlock, slot) {
+        return targetBlock.getFieldValue(slot.default.field);
+    }
+
+    function rememberRawValue(block, slotName, value) {
         if (!block.photonMutatorSavedValues_)
             block.photonMutatorSavedValues_ = {};
-        if (!block.photonMutatorSavedValues_[storeKey])
-            block.photonMutatorSavedValues_[storeKey] = {};
-        block.photonMutatorSavedValues_[storeKey][slotName] = value;
+        block.photonMutatorSavedValues_[slotName] = value;
     }
 
-    function getRememberedValue(block, storeKey, slotName) {
-        return block.photonMutatorSavedValues_ && block.photonMutatorSavedValues_[storeKey] ?
-            block.photonMutatorSavedValues_[storeKey][slotName] : undefined;
+    function getRememberedValue(block, slotName) {
+        return block.photonMutatorSavedValues_ ? block.photonMutatorSavedValues_[slotName] : undefined;
     }
 
     function connectDefaultBlock(input, workspace, defaultSpec, rememberedValue) {
         if (!input || !input.connection || input.connection.targetBlock())
             return;
-        const blockXML = Blockly.utils.xml.createElement("block");
-        blockXML.setAttribute("type", defaultSpec.blockType);
-        const fieldXML = Blockly.utils.xml.createElement("field");
-        fieldXML.setAttribute("name", defaultSpec.field);
-        fieldXML.textContent = (rememberedValue !== undefined && rememberedValue !== null) ?
-            rememberedValue : defaultSpec.value;
-        blockXML.appendChild(fieldXML);
-        const defaultBlock = Blockly.Xml.domToBlock(blockXML, workspace);
+
+        const defaultBlock = workspace.newBlock(defaultSpec.blockType);
+        const fieldValue = (rememberedValue !== undefined && rememberedValue !== null) ? rememberedValue : defaultSpec.value;
+        defaultBlock.setFieldValue(String(fieldValue), defaultSpec.field);
+
+        if (workspace.rendered)
+            defaultBlock.initSvg();
+
         input.connection.connect(defaultBlock.outputConnection);
+
+        if (workspace.rendered)
+            defaultBlock.render();
     }
 
-    function addFeatureInputs(block, storeKey, feature, insertDefaults) {
+    function addFeatureInputs(block, feature, insertDefaults) {
         feature.slots.forEach(function (slot) {
             if (block.getInput(slot.name))
                 return;
+
             if (slot.kind === "field") {
                 const field = Blockly.fieldRegistry.fromJson(slot.field);
                 const input = block.appendDummyInput(slot.name).setAlign(Blockly.ALIGN_RIGHT);
@@ -47,7 +75,7 @@
                     input.appendField(javabridge.t(slot.labelKey));
                 input.appendField(field, slot.name);
                 if (insertDefaults) {
-                    const remembered = getRememberedValue(block, storeKey, slot.name);
+                    const remembered = getRememberedValue(block, slot.name);
                     const initial = (remembered !== undefined && remembered !== null) ? remembered : slot.default;
                     if (initial !== undefined && initial !== null)
                         block.setFieldValue(initial, slot.name);
@@ -57,21 +85,22 @@
                 if (slot.labelKey)
                     input.appendField(javabridge.t(slot.labelKey));
                 if (insertDefaults)
-                    connectDefaultBlock(input, block.workspace, slot.default, getRememberedValue(block, storeKey, slot.name));
+                    connectDefaultBlock(input, block.workspace, slot.default, getRememberedValue(block, slot.name));
             }
         });
     }
 
-    function removeFeatureInputs(block, storeKey, feature) {
+    function removeFeatureInputs(block, feature) {
         feature.slots.forEach(function (slot) {
             const input = block.getInput(slot.name);
             if (!input)
                 return;
+
             if (input.connection) {
                 const targetBlock = input.connection.targetBlock();
                 if (targetBlock) {
-                    if (isTrivialValueBlock(targetBlock)) {
-                        rememberRawValue(block, storeKey, slot.name, getTrivialBlockValue(targetBlock));
+                    if (isTrivialValueBlock(targetBlock, slot)) {
+                        rememberRawValue(block, slot.name, getTrivialBlockValue(targetBlock, slot));
                         targetBlock.dispose(false);
                     } else {
                         targetBlock.unplug(false);
@@ -80,53 +109,54 @@
                     }
                 }
             } else {
-                const field = input.fieldRow && input.fieldRow.find(f => f.name === slot.name);
+                const field = input.fieldRow && input.fieldRow.find(function (f) { return f.name === slot.name; });
                 if (field)
-                    rememberRawValue(block, storeKey, slot.name, field.getValue());
+                    rememberRawValue(block, slot.name, field.getValue());
             }
+
             block.removeInput(slot.name);
         });
     }
 
-    function featureForBlockType(featureBlockTypes, blockType) {
-        return Object.keys(featureBlockTypes).find(key => featureBlockTypes[key] === blockType);
-    }
-
-    function getStackedFeatures(containerBlock, featureBlockTypes) {
+    function getStackedFeatures(containerBlock, blockTypeToFeature) {
         const features = [];
+        const seen = new Set();
         let itemBlock = containerBlock.getInputTargetBlock("STACK");
         while (itemBlock && !itemBlock.isInsertionMarker()) {
-            const feature = featureForBlockType(featureBlockTypes, itemBlock.type);
-            if (feature && features.indexOf(feature) === -1)
+            const feature = blockTypeToFeature[itemBlock.type];
+            if (feature && !seen.has(feature)) {
+                seen.add(feature);
                 features.push(feature);
+            }
             itemBlock = itemBlock.getNextBlock();
         }
         return features;
     }
 
-    function pruneDuplicateMarkers(containerBlock, featureBlockTypes) {
-        const seen = [];
+    function pruneDuplicateMarkers(containerBlock, blockTypeToFeature) {
+        const seen = new Set();
         let itemBlock = containerBlock.getInputTargetBlock("STACK");
         while (itemBlock && !itemBlock.isInsertionMarker()) {
             const nextBlock = itemBlock.getNextBlock();
-            const feature = featureForBlockType(featureBlockTypes, itemBlock.type);
+            const feature = blockTypeToFeature[itemBlock.type];
             if (feature) {
-                if (seen.indexOf(feature) !== -1)
+                if (seen.has(feature))
                     itemBlock.dispose(true);
                 else
-                    seen.push(feature);
+                    seen.add(feature);
             }
             itemBlock = nextBlock;
         }
     }
 
-    function refreshMutatorFlyout(containerBlock, featureOrder, featureBlockTypes) {
+    function refreshMutatorFlyout(containerBlock, featureOrder, featureBlockTypes, blockTypeToFeature) {
         const workspace = containerBlock.workspace;
         const flyout = workspace && workspace.getFlyout ? workspace.getFlyout() : null;
         if (!flyout)
             return;
-        const present = getStackedFeatures(containerBlock, featureBlockTypes);
-        const available = featureOrder.filter(f => present.indexOf(f) === -1);
+
+        const present = new Set(getStackedFeatures(containerBlock, blockTypeToFeature));
+        const available = featureOrder.filter(function (feature) { return !present.has(feature); });
         const quarkXml = available.map(function (feature) {
             const element = Blockly.utils.xml.createElement("block");
             element.setAttribute("type", featureBlockTypes[feature]);
@@ -143,22 +173,27 @@
     }
 
     function register(config) {
-        const featureOrder = config.features.map(f => f.key);
+        const featureOrder = config.features.map(function (f) { return f.key; });
         const featureBlockTypes = {};
         const featureSlots = {};
+        const blockTypeToFeature = {};
+
         config.features.forEach(function (f) {
             featureBlockTypes[f.key] = f.blockType;
             featureSlots[f.key] = f;
+            blockTypeToFeature[f.blockType] = f.key;
         });
 
-        const markerBlockDefs = config.features.map(f => ({
-            "type": f.blockType,
-            "message0": javabridge.t(f.labelKey),
-            "previousStatement": null,
-            "nextStatement": null,
-            "colour": f.colour || config.colour,
-            "duplicatable": false
-        }));
+        const markerBlockDefs = config.features.map(function (f) {
+            return {
+                "type": f.blockType,
+                "message0": javabridge.t(f.labelKey),
+                "previousStatement": null,
+                "nextStatement": null,
+                "colour": f.colour || config.colour,
+                "duplicatable": false
+            };
+        });
 
         Blockly.defineBlocksWithJsonArray([
             {
@@ -174,8 +209,6 @@
                 "colour": config.colour
             }
         ].concat(markerBlockDefs));
-
-        const storeKey = config.mutatorName;
 
         const mixin = {
             mutationToDom: function () {
@@ -210,12 +243,19 @@
                     connection.connect(itemBlock.previousConnection);
                     connection = itemBlock.nextConnection;
                 }
-                refreshMutatorFlyout(containerBlock, featureOrder, featureBlockTypes);
-                workspace.addChangeListener(function (event) {
+                refreshMutatorFlyout(containerBlock, featureOrder, featureBlockTypes, blockTypeToFeature);
+
+                const dragListener = function (event) {
+                    if (containerBlock.disposed) {
+                        workspace.removeChangeListener(dragListener);
+                        return;
+                    }
                     if (event.type !== Blockly.Events.BLOCK_DRAG || event.isStart)
                         return;
                     cleanupOrphanedMarkers(containerBlock);
-                });
+                };
+                workspace.addChangeListener(dragListener);
+
                 return containerBlock;
             },
 
@@ -223,33 +263,43 @@
                 const block = this;
                 clearTimeout(this.photonMutatorComposeTimer_);
                 this.photonMutatorComposeTimer_ = setTimeout(function () {
-                    if (containerBlock.disposed)
+                    if (containerBlock.disposed || block.disposed)
                         return;
-                    pruneDuplicateMarkers(containerBlock, featureBlockTypes);
-                    block.enabledFeatures_ = getStackedFeatures(containerBlock, featureBlockTypes);
+                    pruneDuplicateMarkers(containerBlock, blockTypeToFeature);
+                    block.enabledFeatures_ = getStackedFeatures(containerBlock, blockTypeToFeature);
                     block.updateShape_(true);
-                    refreshMutatorFlyout(containerBlock, featureOrder, featureBlockTypes);
+                    refreshMutatorFlyout(containerBlock, featureOrder, featureBlockTypes, blockTypeToFeature);
                 }, 0);
             },
 
             updateShape_: function (insertDefaults) {
                 const enabled = this.enabledFeatures_ || [];
+                const enabledSet = new Set(enabled);
                 const block = this;
 
-                for (const feature of featureOrder) {
-                    if (enabled.indexOf(feature) === -1)
-                        removeFeatureInputs(block, storeKey, featureSlots[feature]);
-                }
+                const alreadyGrouped = !!Blockly.Events.getGroup();
+                if (!alreadyGrouped)
+                    Blockly.Events.setGroup(true);
 
-                for (const feature of enabled) {
-                    addFeatureInputs(block, storeKey, featureSlots[feature], !!insertDefaults);
-                }
-
-                for (const feature of enabled) {
-                    for (const slot of featureSlots[feature].slots) {
-                        if (block.getInput(slot.name))
-                            block.moveInputBefore(slot.name, null);
+                try {
+                    for (const feature of featureOrder) {
+                        if (!enabledSet.has(feature))
+                            removeFeatureInputs(block, featureSlots[feature]);
                     }
+
+                    for (const feature of enabled) {
+                        addFeatureInputs(block, featureSlots[feature], !!insertDefaults);
+                    }
+
+                    for (const feature of enabled) {
+                        for (const slot of featureSlots[feature].slots) {
+                            if (block.getInput(slot.name))
+                                block.moveInputBefore(slot.name, null);
+                        }
+                    }
+                } finally {
+                    if (!alreadyGrouped)
+                        Blockly.Events.setGroup(false);
                 }
             }
         };
@@ -274,7 +324,8 @@
         });
     }
 
-    window.PhotonMutatorCommon = { register: register };
+    window.PhotonMutatorCommon = { register: register, slots: Slots };
+
     const pending = window.PhotonMutatorPendingConfigs || [];
     window.PhotonMutatorPendingConfigs = [];
     pending.forEach(register);

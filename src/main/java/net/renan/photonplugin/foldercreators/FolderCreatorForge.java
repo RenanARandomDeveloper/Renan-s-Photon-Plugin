@@ -2,7 +2,7 @@ package net.renan.photonplugin.foldercreators;
 
 import java.io.File;
 
-public class FolderCreatorForge extends FolderCreatorCommon {
+public class FolderCreatorForge extends FolderCreator {
 
     private static final String[] STRUCTURE = {
             "assets/photon/fx",

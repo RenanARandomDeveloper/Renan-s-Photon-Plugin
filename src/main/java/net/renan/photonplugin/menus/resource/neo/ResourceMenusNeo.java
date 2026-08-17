@@ -2,7 +2,11 @@ package net.renan.photonplugin.menus.resource.neo;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.menus.resource.common.*;
+import net.renan.photonplugin.menus.resource.common.ResourceMenuFXProject;
+import net.renan.photonplugin.menus.resource.common.ResourceMenuResource;
+import net.renan.photonplugin.menus.resource.common.ResourceMenuTexture;
+import net.renan.photonplugin.menus.resource.common.fx.ResourceMenuFX;
+import net.renan.photonplugin.menus.resource.core.tabs.ResourceTabManager;
 
 import javax.swing.*;
 import java.awt.*;
@@ -24,7 +28,7 @@ public class ResourceMenusNeo {
         synchronized (PANELS) {
             existing = PANELS.get(mc);
         }
-        JPanel updated = ResourceMenuCommon.setupResourceTab(mc, existing,
+        JPanel updated = ResourceTabManager.setupResourceTab(mc, existing,
                 L10N.t("plugin.photon.resourcemenu.tab.photon"), ResourceMenusNeo::createCombinedPanel);
         synchronized (PANELS) {
             PANELS.put(mc, updated);
@@ -36,7 +40,7 @@ public class ResourceMenusNeo {
         synchronized (PANELS) {
             existing = PANELS.remove(mc);
         }
-        ResourceMenuCommon.removeResourceTab(mc, existing);
+        ResourceTabManager.removeResourceTab(mc, existing);
     }
 
     private static JPanel createCombinedPanel(MCreator mc) {
@@ -44,22 +48,22 @@ public class ResourceMenusNeo {
         tabs.setOpaque(false);
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.fx"),
-                ResourceMenuCommonFX.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FX)));
+                ResourceMenuFX.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FX)));
 
         tabs.add(L10N.t("plugin.photon.resourcemenu.tab.fxpack"),
                 ResourceMenuNeoFXPack.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FXPACK)));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.fxproj"),
-                ResourceMenuCommonFXProject.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FXPROJ)));
+                ResourceMenuFXProject.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FXPROJ)));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.model"),
                 ResourceMenuNeoModel.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_MODEL)));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.textures"),
-                ResourceMenuCommonTexture.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_TEXTURE)));
+                ResourceMenuTexture.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_TEXTURE)));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.resource"),
-                ResourceMenuCommonResource.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_RESOURCE)));
+                ResourceMenuResource.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_RESOURCE)));
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setOpaque(false);

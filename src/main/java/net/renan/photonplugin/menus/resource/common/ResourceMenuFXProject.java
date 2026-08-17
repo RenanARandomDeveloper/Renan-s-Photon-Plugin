@@ -1,0 +1,59 @@
+package net.renan.photonplugin.menus.resource.common;
+
+import net.mcreator.ui.MCreator;
+import net.mcreator.ui.component.TransparentToolBar;
+import net.mcreator.ui.init.UIRES;
+import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
+
+import javax.swing.*;
+import java.awt.*;
+import java.io.File;
+import java.util.List;
+import java.util.function.Supplier;
+
+import static net.renan.photonplugin.menus.resource.core.actions.CloneAction.buildCloneButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.CreateFolderAction.buildCreateFolderButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.DeleteAction.buildDeleteButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.ExportAction.buildExportButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.FilterBar.buildFilterBarForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.ImportAction.buildImportButton;
+import static net.renan.photonplugin.menus.resource.core.actions.MoveAction.buildMoveButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.actions.RenameAction.buildRenameButtonForBrowser;
+import static net.renan.photonplugin.menus.resource.core.support.DirectoryWatcher.attachDirectoryWatcher;
+import static net.renan.photonplugin.menus.resource.core.support.IconScaler.scaleIconTo;
+import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolBar;
+
+public final class ResourceMenuFXProject {
+
+    private static final String FXPROJ_EXTENSION = ".fxproj";
+
+    private ResourceMenuFXProject() {}
+
+    public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter) {
+
+        FXBrowserPanel browser = new FXBrowserPanel(List.of(targetDirGetter), FXPROJ_EXTENSION,
+                file -> {try { return scaleIconTo(UIRES.get("64px_photon.fxproj"), 64); }
+                catch (Exception ignored) { return null; }
+                }
+        );
+
+        JPanel panel = new JPanel(new BorderLayout(0, 0));
+        panel.setOpaque(false);
+        TransparentToolBar toolBar = createToolBar();
+        toolBar.add(buildImportButton(mcreator, browser, targetDirGetter, FXPROJ_EXTENSION));
+
+        toolBar.add(buildCloneButtonForBrowser(mcreator, browser, targetDirGetter));
+        toolBar.add(buildDeleteButtonForBrowser(mcreator, browser));
+        toolBar.add(buildExportButtonForBrowser(mcreator, browser));
+        toolBar.add(buildRenameButtonForBrowser(mcreator, browser));
+        toolBar.add(buildMoveButtonForBrowser(mcreator, browser, targetDirGetter));
+        toolBar.add(buildCreateFolderButtonForBrowser(mcreator, browser));
+        toolBar.add(buildFilterBarForBrowser(mcreator, browser));
+        panel.add(toolBar, BorderLayout.NORTH);
+        panel.add(browser, BorderLayout.CENTER);
+
+        attachDirectoryWatcher(panel, browser, targetDirGetter);
+
+        return panel;
+    }
+}

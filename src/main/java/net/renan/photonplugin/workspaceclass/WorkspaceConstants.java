@@ -14,7 +14,11 @@ public final class WorkspaceConstants {
             "RemoveFXEntityServer", "RemoveFXBlockServer",
             "SummonFXEntityClient", "SummonFXBlockClient",
             "RemoveFXEntityClient", "RemoveFXBlockClient",
-            "CheckFXEntity", "CheckFXBlock"
+            "CheckFXEntity", "CheckFXBlock",
+            "ModifyFXEntityServer", "ModifyFXBlockServer",
+            "ModifyFXEntityClient", "ModifyFXBlockClient",
+            "ModifyEntityEffectPacket", "ModifyBlockEffectPacket",
+            "PhotonPluginNetworking"
     );
 
     public static List<String> getBaseClassNames() {

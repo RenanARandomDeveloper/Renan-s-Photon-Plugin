@@ -3,7 +3,7 @@ package net.renan.photonplugin.workspaceclass;
 import net.mcreator.ui.MCreator;
 import net.mcreator.workspace.Workspace;
 import net.mcreator.workspace.settings.WorkspaceSettings;
-import net.renan.photonplugin.Log;
+import net.renan.photonplugin.log.Log;
 
 import java.io.IOException;
 import java.nio.file.Files;

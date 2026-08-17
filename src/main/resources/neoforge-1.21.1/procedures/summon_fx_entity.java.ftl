@@ -19,6 +19,6 @@ SummonFXEntityServer.create(${input$Entity})
     .allowMulti(${input_list$Multi[0]})
 </#if>
 <#if field_list$Auto?size gt 0>
-    .autoRotate(EntityEffectExecutor.AutoRotate.${field_list$Auto[0]})
+    .autoRotate(SummonFXEntityServer.AutoRotate.${field_list$Auto[0]})
 </#if>
 .send();

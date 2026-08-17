@@ -30,7 +30,7 @@ public final class SummonFXEntityClient {
         return new EffectBuilder(entities);
     }
 
-    public enum AutoRotateMode {
+    public enum AutoRotate {
         NONE,
         FORWARD,
         LOOK,
@@ -46,7 +46,7 @@ public final class SummonFXEntityClient {
         private int delay = 0;
         private boolean forcedDeath = false;
         private boolean allowMulti = false;
-        private AutoRotateMode autoRotate = AutoRotateMode.NONE;
+        private AutoRotate autoRotate = AutoRotate.NONE;
 
         protected EffectBuilder(List<Entity> entities) {
             this.entities = entities;
@@ -87,8 +87,8 @@ public final class SummonFXEntityClient {
             return this;
         }
 
-        public EffectBuilder autoRotate(AutoRotateMode autoRotate) {
-            this.autoRotate = autoRotate != null ? autoRotate : AutoRotateMode.NONE;
+        public EffectBuilder autoRotate(AutoRotate autoRotate) {
+            this.autoRotate = autoRotate != null ? autoRotate : AutoRotate.NONE;
             return this;
         }
 
@@ -134,7 +134,7 @@ public final class SummonFXEntityClient {
         }
 
         static void dispatch(List<Entity> entities, String effectName, Vec3 offset, Vec3 rotation, Vec3 scale,
-                             int delay, boolean forcedDeath, boolean allowMulti, AutoRotateMode autoRotateMode) {
+                             int delay, boolean forcedDeath, boolean allowMulti, AutoRotate autoRotateMode) {
             ResourceLocation location = ResourceLocation.fromNamespaceAndPath("photon", effectName);
 
             Minecraft.getInstance().execute(() -> {
@@ -168,7 +168,7 @@ public final class SummonFXEntityClient {
                 }
             });
         }
-        private static EntityEffectExecutor.AutoRotate toPhotonAutoRotate(AutoRotateMode mode) {
+        private static EntityEffectExecutor.AutoRotate toPhotonAutoRotate(AutoRotate mode) {
             return switch (mode) {
                 case FORWARD -> EntityEffectExecutor.AutoRotate.FORWARD;
                 case LOOK -> EntityEffectExecutor.AutoRotate.LOOK;

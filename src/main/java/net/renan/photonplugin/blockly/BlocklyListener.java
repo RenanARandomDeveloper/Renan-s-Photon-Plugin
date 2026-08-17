@@ -3,7 +3,7 @@ package net.renan.photonplugin.blockly;
 import net.mcreator.plugin.JavaPlugin;
 import net.mcreator.plugin.MCREventListener;
 import net.mcreator.ui.MCreator;
-import net.renan.photonplugin.Log;
+import net.renan.photonplugin.log.Log;
 
 import java.io.InputStream;
 import java.lang.reflect.Method;
@@ -15,7 +15,6 @@ public class BlocklyListener {
     private static final String BLOCKLY_PKG = "net.mcreator.plugin.events.ui.";
     private static final String BLOCKLY_CLS_DOM = "BlocklyPanelRegisterDOMData";
     private static final String BLOCKLY_CLS_JS = "BlocklyPanelRegisterJSObjects";
-
     private static final Map<Object, Object> KEEP_ALIVE_BRIDGES = Collections.synchronizedMap(new WeakHashMap<>());
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -63,21 +62,19 @@ public class BlocklyListener {
     }
 
     private static Object extractBlocklyPanel(Object event) {
-        try {
-            return event.getClass().getMethod("getBlocklyPanel").invoke(event);
-        } catch (Throwable ex) {
-            Log.error("Failed to invoke getBlocklyPanel() on event " + event.getClass().getName(), ex);
-            return null;
-        }
+        return invokeNoArg(event, "getBlocklyPanel",
+                "Failed to invoke getBlocklyPanel() on event " + event.getClass().getName());
     }
 
     private static MCreator extractMCreator(Object blocklyPanel) {
-        try {
-            return (MCreator) blocklyPanel.getClass().getMethod("getMCreator").invoke(blocklyPanel);
-        } catch (Throwable ex) {
-            Log.error("Failed to invoke getMCreator() on BlocklyPanel " + blocklyPanel.getClass().getName(), ex);
-            return null;
+        Object result = invokeNoArg(blocklyPanel, "getMCreator",
+                "Failed to invoke getMCreator() on BlocklyPanel " + blocklyPanel.getClass().getName());
+        if (result == null || result instanceof MCreator) {
+            return (MCreator) result;
         }
+        Log.error("getMCreator() on BlocklyPanel " + blocklyPanel.getClass().getName()
+                + " returned an unexpected type: " + result.getClass().getName());
+        return null;
     }
 
     private static void registerModernBridge(Object event, Object blocklyPanel, boolean hasJSObjects, Object bridgeObject) {
@@ -163,15 +160,10 @@ public class BlocklyListener {
     }
 
     private static Object findWebEngineInScene(Object blocklyPanel) {
-        try {
-            Object scene = blocklyPanel.getClass().getMethod("getScene").invoke(blocklyPanel);
-            if (scene == null) return null;
-            Object root = scene.getClass().getMethod("getRoot").invoke(scene);
-            return findWebEngineInNode(root);
-        } catch (Throwable ex) {
-            Log.error("Failed to get BlocklyPanel Scene to locate WebView.", ex);
-            return null;
-        }
+        Object scene = invokeNoArg(blocklyPanel, "getScene", "Failed to get BlocklyPanel Scene to locate WebView.");
+        if (scene == null) return null;
+        Object root = invokeNoArg(scene, "getRoot", "Failed to get Scene root to locate WebView.");
+        return root != null ? findWebEngineInNode(root) : null;
     }
 
     private static Object findWebEngineInNode(Object node) {
@@ -205,6 +197,15 @@ public class BlocklyListener {
         }
 
         return null;
+    }
+    private static Object invokeNoArg(Object target, String methodName, String errorContext) {
+        if (target == null) return null;
+        try {
+            return target.getClass().getMethod(methodName).invoke(target);
+        } catch (Throwable ex) {
+            Log.error(errorContext, ex);
+            return null;
+        }
     }
 
     private static boolean classResourceExists(ClassLoader cl, String resource) {
