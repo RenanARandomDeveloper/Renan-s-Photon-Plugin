@@ -2,7 +2,6 @@ package ${package}.photon_plugin;
 
 import com.lowdragmc.photon.command.RemoveBlockEffectCommand;
 import com.mojang.logging.LogUtils;
-import ${package}.${JavaModName}Mod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -91,7 +90,7 @@ public final class RemoveFXBlockServer {
                 final BlockPos finalPos = this.pos;
                 final boolean finalForce = this.force;
 
-                ${JavaModName}Mod.queueServerWork(this.delay, () -> {
+                ServerEffectScheduler.queueServerWork(this.delay, () -> {
                     try {
                         var removePacket = new RemoveBlockEffectCommand();
 

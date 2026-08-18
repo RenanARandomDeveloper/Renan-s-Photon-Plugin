@@ -9,7 +9,7 @@ public final class WorkspaceConstants {
     public static final String TARGET_SUB_PACKAGE = "photon_plugin";
 
     private static final List<String> BASE_CLASS_NAMES = List.of(
-            "ClientEffectScheduler",
+            "ClientEffectScheduler", "ServerEffectScheduler",
             "SummonFXEntityServer", "SummonFXBlockServer",
             "RemoveFXEntityServer", "RemoveFXBlockServer",
             "SummonFXEntityClient", "SummonFXBlockClient",

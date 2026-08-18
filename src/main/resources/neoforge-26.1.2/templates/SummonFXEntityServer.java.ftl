@@ -3,7 +3,6 @@ package ${package}.photon_plugin;
 import com.lowdragmc.photon.client.fx.EntityEffectExecutor;
 import com.lowdragmc.photon.command.EntityEffectCommand;
 import com.mojang.logging.LogUtils;
-import ${package}.${JavaModName}Mod;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -112,7 +111,7 @@ public final class SummonFXEntityServer {
                     LOGGER.warn("[SummonFXEntityServer] All entities were null for effect '{}'.", this.effectName);
                     return;
                 }
-                ${JavaModName}Mod.queueServerWork(1, () -> {
+                ServerEffectScheduler.queueServerWork(1, () -> {
                     try {
                         var effectPacket = new EntityEffectCommand();
                         effectPacket.setLocation(Identifier.fromNamespaceAndPath("photon", this.effectName));

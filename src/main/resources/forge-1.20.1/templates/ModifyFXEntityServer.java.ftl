@@ -1,7 +1,6 @@
 package ${package}.photon_plugin;
 
 import com.mojang.logging.LogUtils;
-import ${package}.${JavaModName}Mod;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.network.PacketDistributor;
 import org.slf4j.Logger;
@@ -83,7 +82,7 @@ public final class ModifyFXEntityServer {
                     return;
                 }
 
-                ${JavaModName}Mod.queueServerWork(1, () -> {
+                ServerEffectScheduler.queueServerWork(1, () -> {
                     try {
                         var packet = new ModifyEntityEffectPacket();
 

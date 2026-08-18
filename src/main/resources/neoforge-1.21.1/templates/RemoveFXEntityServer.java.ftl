@@ -2,7 +2,6 @@ package ${package}.photon_plugin;
 
 import com.lowdragmc.photon.command.RemoveEntityEffectCommand;
 import com.mojang.logging.LogUtils;
-import ${package}.${JavaModName}Mod;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -88,7 +87,7 @@ public final class RemoveFXEntityServer {
                 final List<Entity> finalEntities = sanitizedEntities;
                 final boolean finalForce = this.force;
 
-                ${JavaModName}Mod.queueServerWork(this.delay, () -> {
+                ServerEffectScheduler.queueServerWork(this.delay, () -> {
                     try {
                         var removePacket = new RemoveEntityEffectCommand();
                         removePacket.setEntities(finalEntities);
