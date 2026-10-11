@@ -17,7 +17,7 @@ public final class FxUsageSearcher {
     private static final Set<String> SKIP_DIRS = Set.of("photon_plugin");
 
     private static final Pattern FX_ACTION_PATTERN = Pattern.compile(
-            "\\b(?:(?:Summon|Remove)FX(?:Entity|Block)(?:Server|Client)\\s*\\.\\s*(?:create|destroy)"
+            "\\b(?:(?:Summon|Remove|Modify)FX(?:Entity|Block)(?:Server|Client)\\s*\\.\\s*(?:create|destroy|modify)"
                     + "|CheckFX(?:Entity|Block)\\s*\\.\\s*check)"
                     + "\\s*\\([^;{}]*\\)\\s*\\.\\s*name\\s*\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\"\\s*\\)"
     );
@@ -41,7 +41,7 @@ public final class FxUsageSearcher {
     }
 
     private static void searchSourceDir(File dir, Map<String, ModElement> byName, List<String> namesByLengthDesc,
-                                         Map<String, List<ModElement>> usagesMap) {
+                                        Map<String, List<ModElement>> usagesMap) {
         if (!dir.isDirectory()) return;
         File[] children = dir.listFiles();
         if (children == null) return;

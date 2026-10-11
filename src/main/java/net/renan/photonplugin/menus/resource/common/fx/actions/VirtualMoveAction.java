@@ -27,7 +27,7 @@ public final class VirtualMoveAction {
     }
 
     public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store,
-                                 Supplier<File> rootDirGetter) {
+                                Supplier<File> rootDirGetter) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.move.files"), "16px_photon.move");
         btn.addActionListener(e -> {
             List<File> selFiles = browser.getSelectedFiles();
@@ -40,7 +40,6 @@ public final class VirtualMoveAction {
 
             File currentDir = browser.getCurrentDir();
             Set<File> excludeDirs = new HashSet<>(selFolders);
-            if (store.isVirtualDir(currentDir)) excludeDirs.add(currentDir);
             File rootDir = rootDirGetter.get();
             DefaultMutableTreeNode rootNode = buildVirtualFolderTree(rootDir, rootDir.getName(), store, excludeDirs);
 
@@ -59,7 +58,12 @@ public final class VirtualMoveAction {
 
                 for (File folder : selFolders) {
                     String destParent = store.isVirtualDir(destDir) ? store.virtualDirName(destDir) : "";
-                    if (store.moveFolderInto(store.virtualDirName(folder), destParent)) movedFolders++;
+                    String originalName = store.lastSegmentOf(store.virtualDirName(folder));
+                    String finalName = store.moveFolderIntoReturningName(store.virtualDirName(folder), destParent);
+                    if (finalName != null) {
+                        movedFolders++;
+                        if (!finalName.equals(originalName)) resolver.noteAutoRename(originalName, finalName);
+                    }
                 }
                 if (movedFiles + movedFolders > 0) browser.refresh();
             } finally {
@@ -77,14 +81,14 @@ public final class VirtualMoveAction {
     }
 
     private static DefaultMutableTreeNode buildVirtualFolderTree(File rootDir, String rootLabel,
-                                                                   VirtualFolderStore store, Set<File> excludeVirtualDirs) {
+                                                                 VirtualFolderStore store, Set<File> excludeVirtualDirs) {
         DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode(new FolderPickerNode(rootDir, rootLabel));
         addVirtualFolderTreeChildren(rootNode, null, store, excludeVirtualDirs);
         return rootNode;
     }
 
     private static void addVirtualFolderTreeChildren(DefaultMutableTreeNode parentNode, File parentVirtualDir,
-                                                       VirtualFolderStore store, Set<File> excludeVirtualDirs) {
+                                                     VirtualFolderStore store, Set<File> excludeVirtualDirs) {
         for (File vDir : store.listVirtualDirs(parentVirtualDir)) {
             if (excludeVirtualDirs.contains(vDir)) continue;
             DefaultMutableTreeNode node = new DefaultMutableTreeNode(

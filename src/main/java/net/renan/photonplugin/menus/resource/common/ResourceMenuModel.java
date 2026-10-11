@@ -1,6 +1,5 @@
 package net.renan.photonplugin.menus.resource.common;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.component.TransparentToolBar;
 import net.mcreator.ui.init.L10N;
@@ -16,10 +15,8 @@ import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -45,12 +42,21 @@ public final class ResourceMenuModel {
     public static final String OBJ_EXTENSION = ".obj";
     public static final String MTL_EXTENSION = ".mtl";
     public static final String JSON_EXTENSION = ".json";
+    public static final String GLB_EXTENSION = ".glb";
+    public static final String GLTF_EXTENSION = ".gltf";
 
-    private ResourceMenuModel() {}
+    private ResourceMenuModel() {
+    }
 
-    @FunctionalInterface
-    public interface CheckedBiConsumer<T, U> {
-        void accept(T t, U u) throws Exception;
+    public static boolean isGltfFileName(String fileName) {
+        if (fileName == null) return false;
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        return lower.endsWith(GLB_EXTENSION) || lower.endsWith(GLTF_EXTENSION);
+    }
+
+    private static String singleFileExtensionOf(String lowerName) {
+        if (lowerName.endsWith(JSON_EXTENSION)) return JSON_EXTENSION;
+        return lowerName.endsWith(GLB_EXTENSION) ? GLB_EXTENSION : GLTF_EXTENSION;
     }
 
     public static File mtlFileFor(File objFile) {
@@ -121,7 +127,7 @@ public final class ResourceMenuModel {
             return;
         }
 
-        String msg = buildDeleteConfirmationMessage(browser, fileTargets, folderTargets);
+        String msg = buildDeleteConfirmationMessage(browser, fileTargets, folderTargets) + companionNotice(fileTargets);
         int choice = JOptionPane.showConfirmDialog(
                 mcreator, msg,
                 L10N.t("plugin.photon.resourcemenu.operation.warning"),
@@ -135,13 +141,16 @@ public final class ResourceMenuModel {
         File objRoot = objDirGetter.get();
         File jsonRoot = jsonDirGetter.get();
         int[] counts = new int[2];
+        List<String> failedNames = new java.util.concurrent.CopyOnWriteArrayList<>();
 
         browser.beginInternalMutation();
         runFileTaskInBackground(mcreator, () -> {
             for (File f : fileTargets) {
-                boolean isJsonSource = f.getName().toLowerCase().endsWith(JSON_EXTENSION);
-                if (isJsonSource) {
+                boolean isSingleFileSource = f.getName().toLowerCase(Locale.ROOT).endsWith(JSON_EXTENSION)
+                        || isGltfFileName(f.getName());
+                if (isSingleFileSource) {
                     if (f.delete()) counts[0]++;
+                    else failedNames.add(f.getName());
                     continue;
                 }
                 File mtl = mtlFileFor(f);
@@ -150,6 +159,8 @@ public final class ResourceMenuModel {
                     if (mtl.exists()) mtl.delete();
                     if (json.exists()) json.delete();
                     counts[0]++;
+                } else {
+                    failedNames.add(f.getName());
                 }
             }
             for (File folder : folderTargets) {
@@ -157,18 +168,38 @@ public final class ResourceMenuModel {
                 if (deleteRecursively(folder)) {
                     if (jsonFolder.exists()) deleteRecursively(jsonFolder);
                     counts[1]++;
+                } else {
+                    failedNames.add(browser.getFolderName(folder));
                 }
             }
         }, () -> {
             try {
                 if (counts[0] + counts[1] > 0) {
                     browser.refresh();
-                    JOptionPane.showMessageDialog(mcreator, buildItemLabel(counts[0], counts[1]) + " " + L10N.t("plugin.photon.resourcemenu.action.deleted"));
+                    JOptionPane.showMessageDialog(mcreator, buildItemLabel(counts[0], counts[1]) + " " + L10N.t("plugin.photon.resourcemenu.action.deleted")
+                            + net.renan.photonplugin.menus.resource.core.support.MenuMessages.buildFailureSummary(failedNames));
+                } else if (!failedNames.isEmpty()) {
+                    JOptionPane.showMessageDialog(mcreator,
+                            net.renan.photonplugin.menus.resource.core.support.MenuMessages.buildFailureSummary(failedNames).trim(),
+                            L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
                 }
             } finally {
                 browser.endInternalMutation();
             }
         });
+    }
+
+    private static String companionNotice(List<File> fileTargets) {
+        int companions = 0;
+        for (File f : fileTargets) {
+            String lower = f.getName().toLowerCase(Locale.ROOT);
+            if (lower.endsWith(JSON_EXTENSION) || isGltfFileName(f.getName())) continue;
+            if (mtlFileFor(f).exists()) companions++;
+        }
+        if (companions == 0) return "";
+        return "\n\n" + net.renan.photonplugin.menus.resource.core.support.MenuMessages.tOr(
+                "plugin.photon.resourcemenu.delete.model.companions",
+                "{0} companion .mtl file(s) will also be deleted.", companions);
     }
 
     public static boolean renameModelFolder(MCreator mcreator, FXBrowserPanel browser, File folder, String progress,
@@ -177,7 +208,10 @@ public final class ResourceMenuModel {
         String hint = progress + "  " + L10N.t("plugin.photon.resourcemenu.rename.input.message") + "\n"
                 + L10N.t("plugin.photon.resourcemenu.rename.current.name") + ": " + browser.getFolderName(folder);
         String newName = onEdt(() -> JOptionPane.showInputDialog(mcreator, hint, browser.getFolderName(folder)));
-        if (newName == null) { cancelAllHolder[0] = true; return false; }
+        if (newName == null) {
+            cancelAllHolder[0] = true;
+            return false;
+        }
         newName = newName.trim();
         if (newName.isEmpty()) {
             onEdtVoid(() -> JOptionPane.showMessageDialog(mcreator,
@@ -194,17 +228,16 @@ public final class ResourceMenuModel {
 
         if (!isSamePathIgnoreCase(dest, folder) && dest.exists()) {
             ConflictResolution resolution = resolver.resolve(mcreator, dest);
-            if (resolution.action() == ACTION_CANCEL) { cancelAllHolder[0] = true; return false; }
-            if (resolution.action() == ACTION_SKIP) return false;
-            dest = resolution.targetFile();
-            if (dest.exists() && !deleteRecursively(dest)) {
-                Log.warn("Could not remove conflicting destination before rename: " + dest.getAbsolutePath());
+            if (resolution.action() == ACTION_CANCEL) {
+                cancelAllHolder[0] = true;
                 return false;
             }
+            if (resolution.action() == ACTION_SKIP) return false;
+            dest = resolution.targetFile();
         }
 
         File finalDest = dest;
-        if (!renameFile(folder, finalDest)) {
+        if (!replaceMove(folder, finalDest)) {
             onEdtVoid(() -> JOptionPane.showMessageDialog(mcreator,
                     progress + " " + L10N.t("plugin.photon.resourcemenu.rename.error") + "\n" + browser.getFolderName(folder),
                     L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE));
@@ -248,7 +281,10 @@ public final class ResourceMenuModel {
                         }
                     } else {
                         RenameOutcome outcome = promptAndRenameFile(mcreator, item, progress, nameResolver, resolver);
-                        if (outcome.isCancelled()) { cancelAllHolder[0] = true; break; }
+                        if (outcome.isCancelled()) {
+                            cancelAllHolder[0] = true;
+                            break;
+                        }
                         if (outcome.isRenamed()) {
                             fileSyncHook.accept(item, outcome.dest());
                             counts[0]++;
@@ -291,7 +327,7 @@ public final class ResourceMenuModel {
                 String optFiles = L10N.t("plugin.photon.resourcemenu.move.type.files") + " (" + selFiles.size() + ")";
                 String optFolders = L10N.t("plugin.photon.resourcemenu.move.type.folders") + " (" + selFolders.size() + ")";
                 String optBoth = L10N.t("plugin.photon.resourcemenu.move.type.both");
-                Object[] options = { optFiles, optFolders, optBoth };
+                Object[] options = {optFiles, optFolders, optBoth};
                 int typeChoice = JOptionPane.showOptionDialog(
                         mcreator, L10N.t("plugin.photon.resourcemenu.move.type.question"),
                         L10N.t("plugin.photon.resourcemenu.move.target.title"),
@@ -344,20 +380,16 @@ public final class ResourceMenuModel {
                     if (isSamePathExact(dest, f)) continue;
                     if (dest.exists() && !isSamePathIgnoreCase(dest, f)) {
                         ConflictResolution resolution = resolver.resolve(mcreator, dest);
-                        if (resolution.action() == ACTION_CANCEL) { cancelAllHolder[0] = true; break; }
+                        if (resolution.action() == ACTION_CANCEL) {
+                            cancelAllHolder[0] = true;
+                            break;
+                        }
                         if (resolution.action() == ACTION_SKIP) continue;
                         dest = resolution.targetFile();
-                        if (dest.exists()) {
-                            boolean removed = isDir ? deleteRecursively(dest) : dest.delete();
-                            if (!removed) {
-                                Log.warn("Could not remove conflicting destination before move: " + dest.getAbsolutePath());
-                                continue;
-                            }
-                        }
                     }
                     File finalDest = dest;
                     File source = f;
-                    if (renameFile(source, finalDest)) {
+                    if (replaceMove(source, finalDest)) {
                         if (isDir) {
                             folderRelocateHook.accept(source, finalDest);
                             counts[1]++;
@@ -413,33 +445,37 @@ public final class ResourceMenuModel {
                     FileNameParts parts = FileNameParts.of(src);
                     String progress = "(" + (++indexHolder[0]) + " / " + total + ")";
                     String cloneName = promptCloneName(mcreator, parts, progress, nameResolver);
-                    if (cloneName == null) { cancelAllHolder[0] = true; break; }
+                    if (cloneName == null) {
+                        cancelAllHolder[0] = true;
+                        break;
+                    }
 
                     File destDir = cloneDestDir;
-                    boolean isJsonSource = src.getName().toLowerCase().endsWith(JSON_EXTENSION);
-                    String destExtension = isJsonSource ? JSON_EXTENSION : OBJ_EXTENSION;
+                    String lowerSrcName = src.getName().toLowerCase(Locale.ROOT);
+                    boolean isSingleFileSource = lowerSrcName.endsWith(JSON_EXTENSION) || isGltfFileName(lowerSrcName);
+                    String destExtension = isSingleFileSource ? singleFileExtensionOf(lowerSrcName) : OBJ_EXTENSION;
 
                     File destFile = new File(destDir, cloneName + destExtension);
                     ConflictResolution resolution = resolver.resolve(mcreator, destFile);
-                    if (resolution.action() == ACTION_CANCEL) { cancelAllHolder[0] = true; break; }
+                    if (resolution.action() == ACTION_CANCEL) {
+                        cancelAllHolder[0] = true;
+                        break;
+                    }
                     if (resolution.action() == ACTION_SKIP) continue;
                     destFile = resolution.targetFile();
 
                     try {
-                        if (isJsonSource) {
-                            if (destFile.exists()) destFile.delete();
-                            FileIO.copyFile(src, destFile);
+                        if (isSingleFileSource) {
+                            copyReplacing(src, destFile);
                         } else {
                             File destObj = destFile;
-                            if (destObj.exists()) destObj.delete();
-                            FileIO.copyFile(src, destObj);
+                            copyReplacing(src, destObj);
 
                             String destBaseName = FileNameParts.of(destObj).baseName();
                             File srcMtl = mtlFileFor(src);
                             File destMtl = new File(destDir, destBaseName + MTL_EXTENSION);
                             if (srcMtl.exists()) {
-                                if (destMtl.exists()) destMtl.delete();
-                                FileIO.copyFile(srcMtl, destMtl);
+                                copyReplacing(srcMtl, destMtl);
                             }
 
                             jsonCloneHook.accept(src, destObj);
@@ -468,5 +504,10 @@ public final class ResourceMenuModel {
             });
         });
         return btn;
+    }
+
+    @FunctionalInterface
+    public interface CheckedBiConsumer<T, U> {
+        void accept(T t, U u) throws Exception;
     }
 }

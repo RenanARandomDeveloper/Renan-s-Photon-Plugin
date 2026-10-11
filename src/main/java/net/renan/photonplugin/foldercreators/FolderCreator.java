@@ -9,6 +9,7 @@ import java.nio.file.Path;
 
 public abstract class FolderCreator {
     protected abstract String getBaseRelativePath();
+
     protected abstract String[] getFolderStructure();
 
     protected void buildStructure(File workspaceRoot) {

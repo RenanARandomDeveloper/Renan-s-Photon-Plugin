@@ -17,6 +17,7 @@ public final class LogViewerDialog {
     private static final int MAX_WIDTH = 900;
     private static final int MIN_HEIGHT = 360;
     private static final int MAX_HEIGHT = 650;
+    private static final int MAX_WIDTH_SAMPLE_LINES = 2000;
 
     private LogViewerDialog() {
     }
@@ -37,28 +38,38 @@ public final class LogViewerDialog {
         JTextArea textArea = new JTextArea();
         textArea.setEditable(false);
         textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        textArea.setMargin(new Insets(8, 10, 8, 10));
         String initialLog = Log.readPersistedLogFor(workspaceFolder);
         textArea.setText(initialLog);
         textArea.setCaretPosition(textArea.getDocument().getLength());
 
+        long[] lastLineCount = {countLines(initialLog)};
+
         JScrollPane scrollPane = new JScrollPane(textArea,
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setBorder(PhotonTheme.roundedLineBorder(PhotonTheme.cardBorder(), 1,
+                PhotonTheme.LIST_CONTAINER_ARC));
 
-        JButton openFolderButton = new JButton(L10N.t("plugin.photon.workspacemenu.log.open_folder"));
-        JButton exportButton = new JButton(L10N.t("plugin.photon.workspacemenu.log.export"));
-        JButton deleteButton = new JButton(L10N.t("plugin.photon.workspacemenu.log.delete"));
-        JButton closeButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
+        JButton openFolderButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.log.open_folder"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton exportButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.log.export"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton deleteButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.log.delete"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton closeButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
         openFolderButton.setToolTipText(L10N.t("plugin.photon.workspacemenu.log.open_folder"));
         exportButton.setToolTipText(L10N.t("plugin.photon.workspacemenu.log.export"));
         deleteButton.setToolTipText(L10N.t("plugin.photon.workspacemenu.log.delete"));
 
-        JPanel bottomPanel = DialogUtils.bottomButtonRow(openFolderButton, exportButton, deleteButton, closeButton);
+        JButton[] allButtons = {openFolderButton, exportButton, deleteButton, closeButton};
 
-        long[] lastLineCount = { Log.getTotalLinesRecordedFor(workspaceFolder) };
+        JPanel bottomPanel = DialogUtils.bottomButtonRow(openFolderButton, exportButton, deleteButton, closeButton);
+        bottomPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 
         exportButton.addActionListener(e -> LogExportDialog.show(dialog, workspaceFolder));
         deleteButton.addActionListener(e -> LogDeleteDialog.show(dialog, workspaceFolder));
-        openFolderButton.addActionListener(e -> openLogsFolder(dialog, workspaceFolder));
+        openFolderButton.addActionListener(e -> openLogsFolder(dialog, workspaceFolder, allButtons));
         closeButton.addActionListener(e -> dialog.dispose());
 
         Runnable onNewLine = () -> SwingUtilities.invokeLater(() -> {
@@ -78,10 +89,11 @@ public final class LogViewerDialog {
             lastLineCount[0] += newLines.size();
             int caret = textArea.getCaretPosition();
             boolean wasAtEnd = caret >= textArea.getDocument().getLength() - 1;
+            StringBuilder appended = new StringBuilder();
             for (String line : newLines) {
-                textArea.append(line);
-                textArea.append(System.lineSeparator());
+                appended.append(line).append(System.lineSeparator());
             }
+            textArea.append(appended.toString());
             textArea.setCaretPosition(
                     wasAtEnd ? textArea.getDocument().getLength() : Math.min(caret, textArea.getDocument()
                             .getLength()));
@@ -100,6 +112,7 @@ public final class LogViewerDialog {
         });
 
         JPanel content = new JPanel(new BorderLayout(5, 5));
+        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         content.add(scrollPane, BorderLayout.CENTER);
         content.add(bottomPanel, BorderLayout.SOUTH);
 
@@ -113,22 +126,37 @@ public final class LogViewerDialog {
         dialog.setVisible(true);
     }
 
+    private static long countLines(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0L;
+        }
+        long lines = 1L;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
+                lines++;
+            }
+        }
+        return lines;
+    }
+
     private static Dimension computeInitialSize(JTextArea textArea, String logText) {
         int lineCount = Math.max(1, textArea.getLineCount());
         FontMetrics metrics = textArea.getFontMetrics(textArea.getFont());
         int lineHeight = metrics.getHeight();
         int height = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, lineCount * lineHeight + 140));
 
+        String[] lines = logText.split("\\R", -1);
+        int step = Math.max(1, lines.length / MAX_WIDTH_SAMPLE_LINES);
         int longestLineWidth = 0;
-        for (String line : logText.split("\\R", -1)) {
-            longestLineWidth = Math.max(longestLineWidth, metrics.stringWidth(line));
+        for (int i = 0; i < lines.length; i += step) {
+            longestLineWidth = Math.max(longestLineWidth, metrics.stringWidth(lines[i]));
         }
         int width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, longestLineWidth + 80));
 
         return new Dimension(width, height);
     }
 
-    private static void openLogsFolder(JDialog dialog, File workspaceFolder) {
+    private static void openLogsFolder(JDialog dialog, File workspaceFolder, JButton[] buttonsToDisable) {
         File logsFolder = Log.getLogsFolderFor(workspaceFolder);
         if (logsFolder == null) {
             JOptionPane.showMessageDialog(dialog,
@@ -142,13 +170,15 @@ public final class LogViewerDialog {
                     L10N.t("plugin.photon.workspacemenu.log.title"), JOptionPane.WARNING_MESSAGE);
             return;
         }
-        try {
+        SwingWorkers.runInBackground(dialog, buttonsToDisable, () -> {
             Desktop.getDesktop().open(logsFolder);
-        } catch (Exception ex) {
+            return null;
+        }, ignored -> {
+        }, ex -> {
             Log.withWorkspace(workspaceFolder, () -> Log.error("Failed to open .photon log folder.", ex));
             JOptionPane.showMessageDialog(dialog,
                     L10N.t("plugin.photon.workspacemenu.log.open_folder.failure", ex.getMessage()),
                     L10N.t("plugin.photon.workspacemenu.log.title"), JOptionPane.ERROR_MESSAGE);
-        }
+        });
     }
 }

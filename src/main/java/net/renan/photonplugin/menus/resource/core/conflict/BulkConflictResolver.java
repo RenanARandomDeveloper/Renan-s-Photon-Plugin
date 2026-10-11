@@ -5,6 +5,7 @@ import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameRules;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
+import net.renan.photonplugin.menus.resource.core.support.MenuMessages;
 
 import javax.swing.*;
 import java.awt.*;
@@ -19,9 +20,9 @@ public class BulkConflictResolver {
 
     private final boolean allowSkip;
     private final boolean showApplyAll;
+    private final List<String> autoRenamedNames = new ArrayList<>();
     private int globalDecision = -1;
     private boolean cancelled = false;
-    private final List<String> autoRenamedNames = new ArrayList<>();
 
     public BulkConflictResolver(int totalItems) {
         this(totalItems, true);
@@ -66,7 +67,7 @@ public class BulkConflictResolver {
                     L10N.t("plugin.photon.resourcemenu.overwrite.skip"),
                     L10N.t("plugin.photon.resourcemenu.operation.cancel.button")
             };
-            int choice = EdtSupport.onEdt(() -> JOptionPane.showOptionDialog(parent, message,
+            int choice = EdtSupport.onEdtChoice(() -> JOptionPane.showOptionDialog(parent, message,
                     L10N.t("common.confirmation"), JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
                     null, options, options[0]));
 
@@ -81,85 +82,6 @@ public class BulkConflictResolver {
                 default -> ConflictResolution.cancel();
             };
         }
-    }
-
-    public ConflictResolution resolve(Component parent, File destFile) {
-        if (!destFile.exists()) return ConflictResolution.proceed(destFile);
-        if (globalDecision != -1) {
-            return switch (globalDecision) {
-                case ConflictResolution.ACTION_PROCEED -> ConflictResolution.proceed(destFile);
-                case ConflictResolution.ACTION_RENAME_ALL -> ConflictResolution.proceed(recordAutoRename(destFile));
-                default -> ConflictResolution.skip();
-            };
-        }
-
-        while (true) {
-            String message = L10N.t("plugin.photon.resourcemenu.overwrite.message") + "\n[" + destFile.getName() + "]";
-            JCheckBox applyAll = showApplyAll ? new JCheckBox(L10N.t("plugin.photon.resourcemenu.overwrite.apply.to.all")) : null;
-            Object[] content = showApplyAll ? new Object[]{message, applyAll} : new Object[]{message};
-            Object[] options = allowSkip
-                    ? new Object[]{
-                    L10N.t("plugin.photon.resourcemenu.overwrite.replace"),
-                    L10N.t("plugin.photon.resourcemenu.overwrite.rename"),
-                    L10N.t("plugin.photon.resourcemenu.overwrite.skip"),
-                    L10N.t("plugin.photon.resourcemenu.operation.cancel.button")
-            }
-                    : new Object[]{
-                    L10N.t("plugin.photon.resourcemenu.overwrite.replace"),
-                    L10N.t("plugin.photon.resourcemenu.overwrite.rename"),
-                    L10N.t("plugin.photon.resourcemenu.operation.cancel.button")
-            };
-            int skipIndex = allowSkip ? 2 : -1;
-
-            int choice = EdtSupport.onEdt(() -> JOptionPane.showOptionDialog(
-                    parent, content,
-                    L10N.t("common.confirmation"),
-                    JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
-                    null, options, options[0]));
-
-            boolean applyToAll = applyAll != null && applyAll.isSelected();
-            if (choice == JOptionPane.CLOSED_OPTION) {
-                cancelled = true;
-                return ConflictResolution.cancel();
-            }
-            if (choice == 1) {
-                if (applyToAll) {
-                    globalDecision = ConflictResolution.ACTION_RENAME_ALL;
-                    return ConflictResolution.proceed(recordAutoRename(destFile));
-                }
-                File renamed = promptRenameOnConflict(parent, destFile);
-                if (renamed == null) continue;
-                return ConflictResolution.proceed(renamed);
-            }
-            if (allowSkip && choice == skipIndex) {
-                if (applyToAll) globalDecision = ConflictResolution.ACTION_SKIP;
-                return ConflictResolution.skip();
-            }
-            if (choice != 0) {
-                cancelled = true;
-                return ConflictResolution.cancel();
-            }
-            if (applyToAll) globalDecision = ConflictResolution.ACTION_PROCEED;
-            return ConflictResolution.proceed(destFile);
-        }
-    }
-
-    private File recordAutoRename(File destFile) {
-        File candidate = generateAutoRenameCandidate(destFile);
-        autoRenamedNames.add(destFile.getName() + " \u2192 " + candidate.getName());
-        return candidate;
-    }
-
-    public boolean hasAutoRenamed() {
-        return !autoRenamedNames.isEmpty();
-    }
-
-    public List<String> getAutoRenamedNames() {
-        return new ArrayList<>(autoRenamedNames);
-    }
-
-    public boolean wasCancelled() {
-        return cancelled;
     }
 
     private static File generateAutoRenameCandidate(File destFile) {
@@ -185,7 +107,7 @@ public class BulkConflictResolver {
             sb.append("\n    ").append(names.get(i));
         }
         if (names.size() > shown) {
-            sb.append("\n  ... and more");
+            sb.append("\n  ").append(MenuMessages.tOr("plugin.photon.resourcemenu.and.more", "... and more"));
         }
         return sb.toString();
     }
@@ -235,5 +157,88 @@ public class BulkConflictResolver {
             }
             return candidate;
         }
+    }
+
+    public ConflictResolution resolve(Component parent, File destFile) {
+        if (!destFile.exists()) return ConflictResolution.proceed(destFile);
+        if (globalDecision != -1) {
+            return switch (globalDecision) {
+                case ConflictResolution.ACTION_PROCEED -> ConflictResolution.proceed(destFile);
+                case ConflictResolution.ACTION_RENAME_ALL -> ConflictResolution.proceed(recordAutoRename(destFile));
+                default -> ConflictResolution.skip();
+            };
+        }
+
+        while (true) {
+            String message = L10N.t("plugin.photon.resourcemenu.overwrite.message") + "\n[" + destFile.getName() + "]";
+            JCheckBox applyAll = showApplyAll ? new JCheckBox(L10N.t("plugin.photon.resourcemenu.overwrite.apply.to.all")) : null;
+            Object[] content = showApplyAll ? new Object[]{message, applyAll} : new Object[]{message};
+            Object[] options = allowSkip
+                    ? new Object[]{
+                    L10N.t("plugin.photon.resourcemenu.overwrite.replace"),
+                    L10N.t("plugin.photon.resourcemenu.overwrite.rename"),
+                    L10N.t("plugin.photon.resourcemenu.overwrite.skip"),
+                    L10N.t("plugin.photon.resourcemenu.operation.cancel.button")
+            }
+                    : new Object[]{
+                    L10N.t("plugin.photon.resourcemenu.overwrite.replace"),
+                    L10N.t("plugin.photon.resourcemenu.overwrite.rename"),
+                    L10N.t("plugin.photon.resourcemenu.operation.cancel.button")
+            };
+            int skipIndex = allowSkip ? 2 : -1;
+
+            int choice = EdtSupport.onEdtChoice(() -> JOptionPane.showOptionDialog(
+                    parent, content,
+                    L10N.t("common.confirmation"),
+                    JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
+                    null, options, options[0]));
+
+            boolean applyToAll = applyAll != null && applyAll.isSelected();
+            if (choice == JOptionPane.CLOSED_OPTION) {
+                cancelled = true;
+                return ConflictResolution.cancel();
+            }
+            if (choice == 1) {
+                if (applyToAll) {
+                    globalDecision = ConflictResolution.ACTION_RENAME_ALL;
+                    return ConflictResolution.proceed(recordAutoRename(destFile));
+                }
+                File renamed = promptRenameOnConflict(parent, destFile);
+                if (renamed == null) continue;
+                return ConflictResolution.proceed(renamed);
+            }
+            if (allowSkip && choice == skipIndex) {
+                if (applyToAll) globalDecision = ConflictResolution.ACTION_SKIP;
+                return ConflictResolution.skip();
+            }
+            if (choice != 0) {
+                cancelled = true;
+                return ConflictResolution.cancel();
+            }
+            if (applyToAll) globalDecision = ConflictResolution.ACTION_PROCEED;
+            return ConflictResolution.proceed(destFile);
+        }
+    }
+
+    private File recordAutoRename(File destFile) {
+        File candidate = generateAutoRenameCandidate(destFile);
+        autoRenamedNames.add(destFile.getName() + " \u2192 " + candidate.getName());
+        return candidate;
+    }
+
+    public void noteAutoRename(String originalName, String finalName) {
+        autoRenamedNames.add(originalName + " \u2192 " + finalName);
+    }
+
+    public boolean hasAutoRenamed() {
+        return !autoRenamedNames.isEmpty();
+    }
+
+    public List<String> getAutoRenamedNames() {
+        return new ArrayList<>(autoRenamedNames);
+    }
+
+    public boolean wasCancelled() {
+        return cancelled;
     }
 }

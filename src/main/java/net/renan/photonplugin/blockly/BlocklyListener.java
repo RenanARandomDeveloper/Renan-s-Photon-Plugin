@@ -16,6 +16,7 @@ public class BlocklyListener {
     private static final String BLOCKLY_CLS_DOM = "BlocklyPanelRegisterDOMData";
     private static final String BLOCKLY_CLS_JS = "BlocklyPanelRegisterJSObjects";
     private static final Map<Object, Object> KEEP_ALIVE_BRIDGES = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Object, Boolean> LOAD_LISTENER_ATTACHED = Collections.synchronizedMap(new WeakHashMap<>());
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static void register(JavaPlugin plugin) {
@@ -90,9 +91,23 @@ public class BlocklyListener {
             attemptBridgeRegistration(event, blocklyPanel, false, hasJSObjects, bridgeObject, false);
 
             Object webEngine = findWebEngineInScene(blocklyPanel);
+            if (webEngine == null) {
+                Log.warn("Could not locate WebEngine; legacy bridge relies on the initial injection only.");
+                return;
+            }
+
+            boolean alreadyAttached;
+            synchronized (LOAD_LISTENER_ATTACHED) {
+                alreadyAttached = LOAD_LISTENER_ATTACHED.putIfAbsent(webEngine, Boolean.TRUE) != null;
+            }
+            if (alreadyAttached) {
+                return;
+            }
+
             boolean attached = FXCompat.attachWebEngineLoadListener(webEngine, () ->
                     attemptBridgeRegistration(event, blocklyPanel, false, hasJSObjects, bridgeObject, true));
             if (!attached) {
+                LOAD_LISTENER_ATTACHED.remove(webEngine);
                 Log.warn("Could not attach WebEngine load-state listener; legacy bridge relies on the initial injection only.");
             }
         });
@@ -118,8 +133,15 @@ public class BlocklyListener {
             if (!registered) {
                 try {
                     Object domWindow = event.getClass().getMethod("getDOMWindow").invoke(event);
-                    domWindow.getClass().getMethod("put", Object.class, Object.class).invoke(domWindow, "photon_fx", bridgeObject);
-                    registered = true;
+                    if (domWindow == null) {
+                        if (logErrors) {
+                            Log.warn("getDOMWindow() returned null on event " + event.getClass().getName()
+                                    + "; DOM window not ready yet for legacy fallback.");
+                        }
+                    } else {
+                        domWindow.getClass().getMethod("put", Object.class, Object.class).invoke(domWindow, "photon_fx", bridgeObject);
+                        registered = true;
+                    }
                 } catch (Throwable ex) {
                     if (logErrors) {
                         Log.error("Legacy fallback getDOMWindow().put failed on event " + event.getClass().getName(), ex);
@@ -153,7 +175,7 @@ public class BlocklyListener {
             return true;
         } catch (Throwable ex) {
             if (logErrors) {
-                Log.error("Failed to inject bridge directly via WebEngine/JSObject.", ex);
+                Log.error("Failed to inject bridge directly via WebEngine1JSObject.", ex);
             }
             return false;
         }
@@ -193,11 +215,13 @@ public class BlocklyListener {
                         if (found != null) return found;
                     }
                 }
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
         }
 
         return null;
     }
+
     private static Object invokeNoArg(Object target, String methodName, String errorContext) {
         if (target == null) return null;
         try {

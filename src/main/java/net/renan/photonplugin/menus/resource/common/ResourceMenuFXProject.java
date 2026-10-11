@@ -4,6 +4,8 @@ import net.mcreator.ui.MCreator;
 import net.mcreator.ui.component.TransparentToolBar;
 import net.mcreator.ui.init.UIRES;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
+import net.renan.photonplugin.menus.resource.preview.common.PreviewMode;
+import net.renan.photonplugin.menus.resource.preview.ui.FxPreviewAttacher;
 
 import javax.swing.*;
 import java.awt.*;
@@ -27,13 +29,27 @@ public final class ResourceMenuFXProject {
 
     private static final String FXPROJ_EXTENSION = ".fxproj";
 
-    private ResourceMenuFXProject() {}
+    private ResourceMenuFXProject() {
+    }
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter) {
+        return createFXPanel(mcreator, targetDirGetter, false);
+    }
+
+    public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter, boolean withPreview) {
+        return createFXPanel(mcreator, targetDirGetter, withPreview, PreviewMode.NEOFORGE);
+    }
+
+    public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter, boolean withPreview,
+                                       PreviewMode mode) {
 
         FXBrowserPanel browser = new FXBrowserPanel(List.of(targetDirGetter), FXPROJ_EXTENSION,
-                file -> {try { return scaleIconTo(UIRES.get("64px_photon.fxproj"), 64); }
-                catch (Exception ignored) { return null; }
+                file -> {
+                    try {
+                        return scaleIconTo(UIRES.get("64px_photon.fxproj"), 64);
+                    } catch (Exception ignored) {
+                        return null;
+                    }
                 }
         );
 
@@ -50,7 +66,11 @@ public final class ResourceMenuFXProject {
         toolBar.add(buildCreateFolderButtonForBrowser(mcreator, browser));
         toolBar.add(buildFilterBarForBrowser(mcreator, browser));
         panel.add(toolBar, BorderLayout.NORTH);
-        panel.add(browser, BorderLayout.CENTER);
+        Component center = withPreview
+                ? FxPreviewAttacher.attach(browser, browser::getSelectedFiles,
+                () -> FxPreviewAttacher.workspaceAssetRoots(mcreator.getWorkspace().getWorkspaceFolder(), mode), mode)
+                : browser;
+        panel.add(center, BorderLayout.CENTER);
 
         attachDirectoryWatcher(panel, browser, targetDirGetter);
 

@@ -10,7 +10,7 @@ repositories {
     flatDir { dirs mcreator_path + '/lib' }
 }
 
-group = 'net.renan.photon'
+group = 'net.renan.photonplugin'
 version = new JsonSlurper().parse(file('src/main/resources/plugin.json'))['info']['version']
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)

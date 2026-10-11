@@ -10,66 +10,16 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowListener;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class StrictNameEnforcer {
 
     private StrictNameEnforcer() {
-    }
-
-    public static final class BlockingInvalidNameResolver {
-        private static final int MIN_ITEMS_FOR_APPLY_ALL = 2;
-
-        private final boolean showApplyAll;
-        private Boolean globalAutoFix = null;
-
-        public BlockingInvalidNameResolver(int totalItems) {
-            this.showApplyAll = totalItems >= MIN_ITEMS_FOR_APPLY_ALL;
-        }
-
-        String resolve(Component parent, String originalName) {
-            String name = originalName;
-            if (FileNameRules.isValidStrictFileName(name)) return name;
-
-            while (!FileNameRules.isValidStrictFileName(name)) {
-                if (globalAutoFix != null) {
-                    return FileNameRules.sanitizeStrictFileName(name);
-                }
-
-                String suggestion = FileNameRules.sanitizeStrictFileName(name);
-
-                JCheckBox applyAll = showApplyAll ? new JCheckBox(L10N.t("plugin.photon.resourcemenu.overwrite.apply.to.all")) : null;
-                String message = FileNameRules.buildInvalidNameMessage(
-                        "plugin.photon.resourcemenu.name.invalid.chars.blocking.message",
-                        "plugin.photon.resourcemenu.name.invalid.case.blocking.message",
-                        name, suggestion);
-                Object[] content = showApplyAll ? new Object[]{message, applyAll} : new Object[]{message};
-                Object[] options = {
-                        L10N.t("plugin.photon.resourcemenu.name.auto.fix"),
-                        L10N.t("plugin.photon.resourcemenu.name.type.manually")
-                };
-                int choice = EdtSupport.onEdt(() -> showUndismissableOptionDialog(parent, content, options));
-
-                if (choice == 0) {
-                    if (applyAll != null && applyAll.isSelected()) globalAutoFix = true;
-                    return suggestion;
-                } else {
-                    String typed = EdtSupport.onEdt(() -> JOptionPane.showInputDialog(parent,
-                            L10N.t("plugin.photon.resourcemenu.name.manual.entry.message"), suggestion));
-                    if (typed == null) continue;
-                    typed = typed.trim();
-                    if (typed.isEmpty()) {
-                        EdtSupport.onEdtVoid(() -> JOptionPane.showMessageDialog(parent,
-                                L10N.t("plugin.photon.resourcemenu.rename.empty.name.error"),
-                                L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE));
-                        continue;
-                    }
-                    name = typed;
-                }
-            }
-            return name;
-        }
     }
 
     private static int showUndismissableOptionDialog(Component parent, Object message, Object[] options) {
@@ -94,16 +44,20 @@ public final class StrictNameEnforcer {
     }
 
     private static String promptUniqueNameOnConflictBlocking(Component parent, File dir, String conflictingName,
-                                                              String extension, File exceptFile) {
+                                                             String extension, File exceptFile) {
         String prefill = conflictingName;
         EdtSupport.onEdtVoid(() -> JOptionPane.showMessageDialog(parent,
                 L10N.t("plugin.photon.resourcemenu.name.conflict.blocking.message", conflictingName),
                 L10N.t("plugin.photon.resourcemenu.operation.warning"), JOptionPane.WARNING_MESSAGE));
         while (true) {
+            if (EdtSupport.isAborted()) return null;
             String currentPrefill = prefill;
             String typed = EdtSupport.onEdt(() -> JOptionPane.showInputDialog(parent,
                     L10N.t("plugin.photon.resourcemenu.name.manual.entry.message"), currentPrefill));
-            if (typed == null) continue;
+            if (typed == null) {
+                if (EdtSupport.isAborted()) return null;
+                continue;
+            }
             typed = typed.trim();
             if (typed.isEmpty() || !FileNameRules.isValidStrictFileName(typed)) {
                 String finalTyped = typed;
@@ -146,12 +100,14 @@ public final class StrictNameEnforcer {
         while (true) {
             FileNameParts currentParts = FileNameParts.of(current);
             String validName = resolver.resolve(parent, currentParts.baseName());
+            if (validName == null) return current;
 
             File dest = new File(dir, validName + extension);
             if (FileOps.isSamePathExact(dest, current)) return current;
 
             if (dest.exists() && !FileOps.isSamePathIgnoreCase(dest, current)) {
                 validName = promptUniqueNameOnConflictBlocking(parent, dir, validName, extension, current);
+                if (validName == null) return current;
                 dest = new File(dir, validName + extension);
                 if (FileOps.isSamePathExact(dest, current)) return current;
             }
@@ -168,7 +124,7 @@ public final class StrictNameEnforcer {
                         L10N.t("plugin.photon.resourcemenu.rename.retry"),
                         L10N.t("plugin.photon.resourcemenu.rename.leave.as.is")
                 };
-                int choice = EdtSupport.onEdt(() -> JOptionPane.showOptionDialog(parent,
+                int choice = EdtSupport.onEdtChoice(() -> JOptionPane.showOptionDialog(parent,
                         L10N.t("plugin.photon.resourcemenu.rename.error") + "\n" + current.getName(),
                         L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.DEFAULT_OPTION,
                         JOptionPane.ERROR_MESSAGE, null, retryOptions, retryOptions[0]));
@@ -186,17 +142,26 @@ public final class StrictNameEnforcer {
 
     private static List<File> listFilesRecursively(File dir, String extension) {
         List<File> result = new ArrayList<>();
-        if (dir == null || !dir.isDirectory()) return result;
+        collectFiles(dir, extension, result, new HashSet<>());
+        return result;
+    }
+
+    private static void collectFiles(File dir, String extension, List<File> result, Set<Path> visited) {
+        if (dir == null || !dir.isDirectory()) return;
+        try {
+            if (!visited.add(dir.toPath().toRealPath())) return;
+        } catch (IOException | RuntimeException ex) {
+            return;
+        }
         File[] children = dir.listFiles();
-        if (children == null) return result;
+        if (children == null) return;
         for (File child : children) {
             if (child.isDirectory()) {
-                result.addAll(listFilesRecursively(child, extension));
+                collectFiles(child, extension, result, visited);
             } else if (FileNameRules.hasExtension(child, extension)) {
                 result.add(child);
             }
         }
-        return result;
     }
 
     public static void validateExistingFileNamesBlocking(Component parent, File rootDir, String extension) {
@@ -211,7 +176,66 @@ public final class StrictNameEnforcer {
         }
         BlockingInvalidNameResolver resolver = new BlockingInvalidNameResolver(invalidNameCount);
         for (File file : candidates) {
+            if (Thread.currentThread().isInterrupted()) break;
             enforceValidNameBlocking(parent, file, extension, resolver);
+        }
+    }
+
+    public static final class BlockingInvalidNameResolver {
+        private static final int MIN_ITEMS_FOR_APPLY_ALL = 2;
+
+        private final boolean showApplyAll;
+        private Boolean globalAutoFix = null;
+
+        public BlockingInvalidNameResolver(int totalItems) {
+            this.showApplyAll = totalItems >= MIN_ITEMS_FOR_APPLY_ALL;
+        }
+
+        String resolve(Component parent, String originalName) {
+            String name = originalName;
+            if (FileNameRules.isValidStrictFileName(name)) return name;
+
+            while (!FileNameRules.isValidStrictFileName(name)) {
+                if (EdtSupport.isAborted()) return null;
+                if (globalAutoFix != null) {
+                    return FileNameRules.sanitizeStrictFileName(name);
+                }
+
+                String suggestion = FileNameRules.sanitizeStrictFileName(name);
+
+                JCheckBox applyAll = showApplyAll ? new JCheckBox(L10N.t("plugin.photon.resourcemenu.overwrite.apply.to.all")) : null;
+                String message = FileNameRules.buildInvalidNameMessage(
+                        "plugin.photon.resourcemenu.name.invalid.chars.blocking.message",
+                        "plugin.photon.resourcemenu.name.invalid.case.blocking.message",
+                        name, suggestion);
+                Object[] content = showApplyAll ? new Object[]{message, applyAll} : new Object[]{message};
+                Object[] options = {
+                        L10N.t("plugin.photon.resourcemenu.name.auto.fix"),
+                        L10N.t("plugin.photon.resourcemenu.name.type.manually")
+                };
+                int choice = EdtSupport.onEdtChoice(() -> showUndismissableOptionDialog(parent, content, options));
+
+                if (choice == 0) {
+                    if (applyAll != null && applyAll.isSelected()) globalAutoFix = true;
+                    return suggestion;
+                } else {
+                    String typed = EdtSupport.onEdt(() -> JOptionPane.showInputDialog(parent,
+                            L10N.t("plugin.photon.resourcemenu.name.manual.entry.message"), suggestion));
+                    if (typed == null) {
+                        if (EdtSupport.isAborted()) return null;
+                        continue;
+                    }
+                    typed = typed.trim();
+                    if (typed.isEmpty()) {
+                        EdtSupport.onEdtVoid(() -> JOptionPane.showMessageDialog(parent,
+                                L10N.t("plugin.photon.resourcemenu.rename.empty.name.error"),
+                                L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE));
+                        continue;
+                    }
+                    name = typed;
+                }
+            }
+            return name;
         }
     }
 }

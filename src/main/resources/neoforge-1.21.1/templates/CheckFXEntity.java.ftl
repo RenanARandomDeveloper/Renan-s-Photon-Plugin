@@ -18,6 +18,11 @@ public final class CheckFXEntity {
     private CheckFXEntity() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static QueryBuilder check(Entity entity) {
         return new QueryBuilder(entity);
     }
@@ -71,7 +76,7 @@ public final class CheckFXEntity {
                 return true;
             }
 
-            ResourceLocation targetLocation = ResourceLocation.tryParse("photon:" + effectName);
+            ResourceLocation targetLocation = resolveEffectLocation(effectName);
             if (targetLocation == null) {
                 LOGGER.warn("[CheckFXEntity] Invalid effect name '{}' could not be parsed into a ResourceLocation.", effectName);
                 return false;

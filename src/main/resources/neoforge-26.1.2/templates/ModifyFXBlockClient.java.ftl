@@ -19,6 +19,11 @@ public final class ModifyFXBlockClient {
     private ModifyFXBlockClient() {
     }
 
+    private static Identifier resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? Identifier.tryParse(name) : Identifier.tryParse("photon:" + name);
+    }
+
     public static ModifyBuilder modify(BlockPos pos) {
         return new ModifyBuilder(pos != null ? List.of(pos) : null);
     }
@@ -96,7 +101,7 @@ public final class ModifyFXBlockClient {
 
                 Identifier targetLocation = null;
                 if (this.effectName != null && !this.effectName.isEmpty()) {
-                    targetLocation = Identifier.tryParse("photon:" + this.effectName);
+                    targetLocation = resolveEffectLocation(this.effectName);
                     if (targetLocation == null) {
                         LOGGER.warn("[ModifyFXBlockClient] Invalid effect name '{}' could not be parsed into a Identifier.", this.effectName);
                         return 0;

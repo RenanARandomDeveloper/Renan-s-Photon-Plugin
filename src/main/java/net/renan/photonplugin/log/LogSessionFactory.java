@@ -29,7 +29,11 @@ final class LogSessionFactory {
     }
 
     private static void ensureDirectoryExists(File directory) {
-        if (!directory.exists() && !directory.mkdirs()) {
+        if (directory.exists()) {
+            return;
+        }
+
+        if (!directory.mkdirs() && !directory.exists()) {
             LogInternal.LOGGER.error("[Photon] Failed to create folder at {}", directory.getAbsolutePath());
         }
     }

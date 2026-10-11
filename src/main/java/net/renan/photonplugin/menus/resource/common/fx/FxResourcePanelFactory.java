@@ -12,6 +12,11 @@ import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserP
 import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameRules;
 import net.renan.photonplugin.menus.resource.core.support.IconScaler;
+import net.renan.photonplugin.menus.resource.preview.common.PreviewMode;
+import net.renan.photonplugin.menus.resource.preview.common.render.DefaultAssetInstaller;
+import net.renan.photonplugin.menus.resource.preview.common.render.PreviewDiagnostics;
+import net.renan.photonplugin.menus.resource.preview.ui.FXPreviewPanel;
+import net.renan.photonplugin.menus.resource.preview.ui.FxPreviewAttacher;
 
 import javax.swing.*;
 import java.awt.*;
@@ -32,6 +37,15 @@ public final class FxResourcePanelFactory {
     }
 
     public static JPanel build(MCreator mcreator, Supplier<File> targetDirGetter) {
+        return build(mcreator, targetDirGetter, false);
+    }
+
+    public static JPanel build(MCreator mcreator, Supplier<File> targetDirGetter, boolean enablePreview) {
+        return build(mcreator, targetDirGetter, enablePreview, PreviewMode.NEOFORGE);
+    }
+
+    public static JPanel build(MCreator mcreator, Supplier<File> targetDirGetter, boolean enablePreview,
+                               PreviewMode mode) {
         VirtualFolderStore store = new VirtualFolderStore(
                 mcreator.getWorkspace().getWorkspaceFolder(),
                 () -> VirtualBrowserSupport.listFlatFilesByExtension(targetDirGetter.get(), FX_EXTENSION));
@@ -70,7 +84,32 @@ public final class FxResourcePanelFactory {
         toolBar.add(buildFilterBarForBrowser(mcreator, browser));
 
         panel.add(toolBar, BorderLayout.NORTH);
-        panel.add(browser, BorderLayout.CENTER);
+
+        if (enablePreview) {
+            File defaultAssetsRoot = DefaultAssetInstaller.ensureInstalled(
+                    mcreator.getWorkspace().getWorkspaceFolder(), PreviewDiagnostics.CONSOLE);
+            File gameRunDir = new File(mcreator.getWorkspace().getWorkspaceFolder(), "run");
+            Supplier<List<File>> assetsRootsGetter = () -> {
+                File runAssetsRoot = targetDirGetter.get().getParentFile().getParentFile();
+                return defaultAssetsRoot != null
+                        ? List.of(runAssetsRoot, defaultAssetsRoot, gameRunDir)
+                        : List.of(runAssetsRoot, gameRunDir);
+            };
+            FXPreviewPanel preview = new FXPreviewPanel(assetsRootsGetter, mode);
+            browser.setSelectionListener(
+                    selectedFiles -> preview.setSelectedFile(selectedFiles.size() == 1 ? selectedFiles.get(0) : null));
+
+            JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, browser, preview);
+            split.setOpaque(false);
+            split.setContinuousLayout(true);
+            split.setOneTouchExpandable(true);
+            split.setDividerSize(6);
+            split.setBorder(BorderFactory.createEmptyBorder());
+            FxPreviewAttacher.installProportionalDivider(split);
+            panel.add(split, BorderLayout.CENTER);
+        } else {
+            panel.add(browser, BorderLayout.CENTER);
+        }
 
         attachDirectoryWatcher(panel, browser, targetDirGetter, (root, changed, kind) -> {
             Log.bindWorkspace(mcreator.getWorkspace().getWorkspaceFolder());
@@ -87,7 +126,8 @@ public final class FxResourcePanelFactory {
                         store.removeFiles(List.of(file));
                     }
                 }
-                case OVERFLOW -> FXListManager.initialize(mcreator.getWorkspace().getWorkspaceFolder(), targetDirGetter.get());
+                case OVERFLOW ->
+                        FXListManager.initialize(mcreator.getWorkspace().getWorkspaceFolder(), targetDirGetter.get());
                 case MODIFY -> {
                 }
             }

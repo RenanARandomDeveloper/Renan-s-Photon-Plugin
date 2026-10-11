@@ -29,14 +29,16 @@ public final class BackupExportDialog {
         }
 
         JDialog dialog = new JDialog(owner, L10N.t("plugin.photon.workspacemenu.backup.export.title"),
-                Dialog.ModalityType.APPLICATION_MODAL);
+                Dialog.ModalityType.DOCUMENT_MODAL);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         DialogUtils.closeOnEscape(dialog);
 
         JLabel selectionLabel = DialogUtils.mutedCaption();
 
-        JButton exportButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.export.confirm"));
-        JButton cancelButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
+        JButton exportButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.export.confirm"),
+                PhotonTheme.ButtonVariant.PRIMARY);
+        JButton cancelButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
         exportButton.setEnabled(false);
 
         Runnable updateSelectionState = () -> {
@@ -54,10 +56,11 @@ public final class BackupExportDialog {
         picker.onDoubleClick(file -> exportSelected(dialog, backup, List.of(file), exportButton, cancelButton));
 
         JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setOpaque(false);
         topPanel.add(selectionLabel, BorderLayout.EAST);
 
         JPanel content = new JPanel(new BorderLayout(10, 8));
-        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         content.add(picker.getComponent(), BorderLayout.CENTER);
         content.add(topPanel, BorderLayout.NORTH);
         content.add(DialogUtils.bottomButtonRow(cancelButton, exportButton), BorderLayout.SOUTH);
@@ -82,12 +85,12 @@ public final class BackupExportDialog {
                 : MULTI_EXPORT_FILE_NAME;
 
         File destination = ExportFileChooser.chooseDestination(dialog,
-                L10N.t("plugin.photon.workspacemenu.log.export.choose_destination"), suggestedName, "zip");
+                L10N.t("plugin.photon.workspacemenu.backup.export.choose_destination"), suggestedName, "zip");
         if (destination == null) {
             return;
         }
 
-        SwingWorkers.runInBackground(dialog, new JButton[] { exportButton, cancelButton },
+        SwingWorkers.runInBackground(dialog, new JButton[]{exportButton, cancelButton},
                 () -> {
                     backup.exportBackups(selected, destination);
                     return destination;

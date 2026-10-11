@@ -7,7 +7,6 @@ import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
 import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
-import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import net.renan.photonplugin.menus.resource.core.support.MenuMessages;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
 
@@ -81,6 +80,8 @@ public final class MoveAction {
 
             int[] counts = new int[2];
             boolean[] cancelAllHolder = new boolean[1];
+            int[] unchanged = new int[1];
+            List<String> failedNames = new java.util.concurrent.CopyOnWriteArrayList<>();
             int conflictCount = BulkConflictResolver.countConflicts(itemsToMove, destDir);
             BulkConflictResolver resolver = new BulkConflictResolver(conflictCount);
 
@@ -90,7 +91,10 @@ public final class MoveAction {
                     if (cancelAllHolder[0]) break;
                     boolean isDir = f.isDirectory();
                     File dest = new File(destDir, f.getName());
-                    if (FileOps.isSamePathExact(dest, f)) continue;
+                    if (FileOps.isSamePathExact(dest, f)) {
+                        unchanged[0]++;
+                        continue;
+                    }
                     if (dest.exists() && !FileOps.isSamePathIgnoreCase(dest, f)) {
                         ConflictResolution resolution = resolver.resolve(mcreator, dest);
                         if (resolution.action() == ConflictResolution.ACTION_CANCEL) {
@@ -99,17 +103,12 @@ public final class MoveAction {
                         }
                         if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
                         dest = resolution.targetFile();
-                        if (dest.exists()) {
-                            boolean removed = isDir ? FileOps.deleteRecursively(dest) : dest.delete();
-                            if (!removed) {
-                                MenuLog.warn("Could not remove conflicting destination before move: " + dest.getAbsolutePath());
-                                continue;
-                            }
-                        }
                     }
-                    if (FileOps.renameFile(f, dest)) {
+                    if (FileOps.replaceMove(f, dest)) {
                         if (isDir) counts[1]++;
                         else counts[0]++;
+                    } else {
+                        failedNames.add(f.getName());
                     }
                 }
             }, () -> {
@@ -117,8 +116,12 @@ public final class MoveAction {
                     if (counts[0] + counts[1] > 0) {
                         browser.refresh();
                         JOptionPane.showMessageDialog(mcreator, MenuMessages.buildItemLabel(counts[0], counts[1]) + " " + L10N.t("plugin.photon.resourcemenu.action.moved")
-                                + " \u2192 \"" + browser.getFolderName(destDir) + "\"" + BulkConflictResolver.autoRenameNotice(resolver));
-                    } else if (!cancelAllHolder[0]) {
+                                + " \u2192 \"" + browser.getFolderName(destDir) + "\"" + BulkConflictResolver.autoRenameNotice(resolver)
+                                + MenuMessages.buildFailureSummary(failedNames));
+                    } else if (!failedNames.isEmpty()) {
+                        JOptionPane.showMessageDialog(mcreator, MenuMessages.buildFailureSummary(failedNames).trim(),
+                                L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
+                    } else if (!cancelAllHolder[0] && unchanged[0] == 0) {
                         JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                     }
                 } finally {

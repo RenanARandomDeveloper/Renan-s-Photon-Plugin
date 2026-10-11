@@ -20,9 +20,6 @@ import static net.renan.photonplugin.menus.resource.core.support.MenuMessages.*;
 
 public final class VirtualDeleteAction {
 
-    private record VirtualDeleteFolderDecision(File folder, boolean deleteAll, List<File> contents) {
-    }
-
     private VirtualDeleteAction() {
     }
 
@@ -177,5 +174,8 @@ public final class VirtualDeleteAction {
                 browser.endInternalMutation();
             }
         });
+    }
+
+    private record VirtualDeleteFolderDecision(File folder, boolean deleteAll, List<File> contents) {
     }
 }

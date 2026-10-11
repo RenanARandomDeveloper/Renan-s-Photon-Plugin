@@ -9,6 +9,7 @@ import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,7 +22,7 @@ public final class LogDeleteDialog {
         File activeLogFile = Log.getLogFileFor(workspaceFolder);
 
         List<File> deletableLogs = availableLogs.stream()
-                .filter(file -> activeLogFile == null || !file.equals(activeLogFile))
+                .filter(file -> !file.equals(activeLogFile))
                 .collect(Collectors.toList());
 
         if (deletableLogs.isEmpty()) {
@@ -33,14 +34,16 @@ public final class LogDeleteDialog {
         LogListSelectionPanel picker = LogListSelectionPanel.multiSelect(deletableLogs, activeLogFile);
 
         JDialog dialog = new JDialog(owner, L10N.t("plugin.photon.workspacemenu.log.delete.title"),
-                Dialog.ModalityType.APPLICATION_MODAL);
+                Dialog.ModalityType.DOCUMENT_MODAL);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         DialogUtils.closeOnEscape(dialog);
 
         JLabel selectionLabel = DialogUtils.mutedCaption();
 
-        JButton deleteButton = new JButton(L10N.t("plugin.photon.workspacemenu.log.delete.confirm"));
-        JButton cancelButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
+        JButton deleteButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.log.delete.confirm"),
+                PhotonTheme.ButtonVariant.DANGER);
+        JButton cancelButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
         deleteButton.setEnabled(false);
 
         Runnable updateSelectionState = () -> {
@@ -69,10 +72,11 @@ public final class LogDeleteDialog {
                 triggerDeleteIfEnabled);
 
         JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setOpaque(false);
         topPanel.add(selectionLabel, BorderLayout.EAST);
 
         JPanel content = new JPanel(new BorderLayout(10, 8));
-        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         content.add(picker.getComponent(), BorderLayout.CENTER);
         content.add(topPanel, BorderLayout.NORTH);
         content.add(DialogUtils.bottomButtonRow(cancelButton, deleteButton), BorderLayout.SOUTH);
@@ -99,7 +103,7 @@ public final class LogDeleteDialog {
             return;
         }
 
-        SwingWorkers.runInBackground(dialog, new JButton[] { deleteButton, cancelButton },
+        SwingWorkers.runInBackground(dialog, new JButton[]{deleteButton, cancelButton},
                 () -> deleteLogFiles(selected),
                 deletedCount -> {
                     Log.withWorkspace(workspaceFolder,
@@ -120,10 +124,19 @@ public final class LogDeleteDialog {
 
     private static int deleteLogFiles(List<File> files) throws IOException {
         int deleted = 0;
+        List<String> failures = new ArrayList<>();
         for (File file : files) {
-            if (Files.deleteIfExists(file.toPath())) {
-                deleted++;
+            try {
+                if (Files.deleteIfExists(file.toPath())) {
+                    deleted++;
+                }
+            } catch (IOException ex) {
+                failures.add(file.getName());
             }
+        }
+        if (!failures.isEmpty()) {
+            throw new IOException("Could not delete: " + String.join(", ", failures) + " (" + deleted
+                    + " file(s) deleted successfully)");
         }
         return deleted;
     }

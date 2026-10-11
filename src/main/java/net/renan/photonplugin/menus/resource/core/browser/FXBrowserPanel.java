@@ -5,9 +5,10 @@ import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
 import net.renan.photonplugin.menus.resource.core.fs.FileOps;
+import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameRules;
+import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
-import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import net.renan.photonplugin.menus.resource.core.support.MenuMessages;
 import net.renan.photonplugin.menus.resource.core.support.MenuTheme;
 
@@ -17,6 +18,7 @@ import java.awt.event.*;
 import java.io.File;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
@@ -24,69 +26,32 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class FXBrowserPanel extends JPanel {
-    List<Supplier<File>> rootSuppliers;
+    static final File VIRTUAL_ROOT_SENTINEL = new File("\0");
+    private static final long WATCHER_ECHO_GRACE_MILLIS = 800L;
     protected final String extension;
     protected final Set<String> displayExtensions;
     protected final Function<File, Icon> iconProvider;
-    protected File currentDir;
-    Deque<File> navHistory = new ArrayDeque<>();
     protected final Set<File> selectedFiles = new LinkedHashSet<>();
     protected final Set<File> selectedFolders = new LinkedHashSet<>();
-    protected ItemCard lastSelected = null;
-    protected String filterText = "";
-    protected FilterType filterType = FilterType.ALL;
-    private final JButton btnUp;
     protected final JPanel breadcrumbPanel;
     protected final JPanel grid;
     protected final List<ItemCard> allCards = new ArrayList<>();
+    protected final List<String> moveFailures = new CopyOnWriteArrayList<>();
+    private final JButton btnUp;
     private final JScrollPane scroll;
     private final AtomicInteger activeInternalMutations = new AtomicInteger(0);
+    protected File currentDir;
+    protected ItemCard lastSelected = null;
+    protected String filterText = "";
+    protected FilterType filterType = FilterType.ALL;
+    List<Supplier<File>> rootSuppliers;
+    Deque<File> navHistory = new ArrayDeque<>();
     private volatile long suppressWatcherUntilMillis = 0L;
-    private static final long WATCHER_ECHO_GRACE_MILLIS = 800L;
+    private File[] cachedEntries = null;
+    private File cachedEntriesDir = null;
     private BiConsumer<File, File> postMoveHook = null;
-
-    static final File VIRTUAL_ROOT_SENTINEL = new File("\0");
-
-    public void setPostMoveHook(BiConsumer<File, File> hook) {
-        this.postMoveHook = hook;
-    }
-
+    private java.util.function.Consumer<List<File>> selectionListener = null;
     private BooleanSupplier dragAndDropEnabledSupplier = () -> true;
-
-    public void setDragAndDropEnabled(boolean enabled) {
-        this.dragAndDropEnabledSupplier = () -> enabled;
-    }
-
-    public void setDragAndDropEnabledSupplier(BooleanSupplier supplier) {
-        this.dragAndDropEnabledSupplier = (supplier != null) ? supplier : (() -> true);
-    }
-
-    public boolean isDragAndDropEnabled() {
-        return dragAndDropEnabledSupplier.getAsBoolean();
-    }
-
-    public void beginInternalMutation() {
-        activeInternalMutations.incrementAndGet();
-    }
-
-    public void endInternalMutation() {
-        if (activeInternalMutations.decrementAndGet() <= 0) {
-            activeInternalMutations.set(0);
-            suppressWatcherUntilMillis = System.currentTimeMillis() + WATCHER_ECHO_GRACE_MILLIS;
-        }
-    }
-
-    public boolean isWatcherRefreshSuppressed() {
-        return activeInternalMutations.get() > 0 || System.currentTimeMillis() < suppressWatcherUntilMillis;
-    }
-
-    public String getExtension() {
-        return extension;
-    }
-
-    public JPanel getGrid() {
-        return grid;
-    }
 
     public FXBrowserPanel(List<Supplier<File>> rootSuppliers, String extension, Function<File, Icon> iconProvider) {
         this(rootSuppliers, extension, extension != null ? Set.of(extension) : null, iconProvider);
@@ -172,6 +137,55 @@ public class FXBrowserPanel extends JPanel {
         add(layered, BorderLayout.CENTER);
         setupGridKeyNavigation();
         refresh();
+    }
+
+    public void setPostMoveHook(BiConsumer<File, File> hook) {
+        this.postMoveHook = hook;
+    }
+
+    public void setSelectionListener(java.util.function.Consumer<List<File>> listener) {
+        this.selectionListener = listener;
+    }
+
+    protected void fireSelectionChanged() {
+        if (selectionListener != null) {
+            selectionListener.accept(new ArrayList<>(selectedFiles));
+        }
+    }
+
+    public void setDragAndDropEnabledSupplier(BooleanSupplier supplier) {
+        this.dragAndDropEnabledSupplier = (supplier != null) ? supplier : (() -> true);
+    }
+
+    public boolean isDragAndDropEnabled() {
+        return dragAndDropEnabledSupplier.getAsBoolean();
+    }
+
+    public void setDragAndDropEnabled(boolean enabled) {
+        this.dragAndDropEnabledSupplier = () -> enabled;
+    }
+
+    public void beginInternalMutation() {
+        activeInternalMutations.incrementAndGet();
+    }
+
+    public void endInternalMutation() {
+        if (activeInternalMutations.decrementAndGet() <= 0) {
+            activeInternalMutations.set(0);
+            suppressWatcherUntilMillis = System.currentTimeMillis() + WATCHER_ECHO_GRACE_MILLIS;
+        }
+    }
+
+    public boolean isWatcherRefreshSuppressed() {
+        return activeInternalMutations.get() > 0 || System.currentTimeMillis() < suppressWatcherUntilMillis;
+    }
+
+    public String getExtension() {
+        return extension;
+    }
+
+    public JPanel getGrid() {
+        return grid;
     }
 
     private void setupGridKeyNavigation() {
@@ -360,12 +374,13 @@ public class FXBrowserPanel extends JPanel {
             }
             lastSelected = card;
         } else {
-            clearSelection();
+            clearSelectionQuiet();
             selectedFolders.add(card.getFile());
             card.setSelected(true);
             lastSelected = card;
         }
         grid.requestFocusInWindow();
+        fireSelectionChanged();
     }
 
     protected void handleFileCardClick(FileCard card, MouseEvent e) {
@@ -383,19 +398,20 @@ public class FXBrowserPanel extends JPanel {
             }
             lastSelected = card;
         } else {
-            clearSelection();
+            clearSelectionQuiet();
             selectedFiles.add(card.getFile());
             card.setSelected(true);
             lastSelected = card;
         }
         grid.requestFocusInWindow();
+        fireSelectionChanged();
     }
 
     private void selectRange(ItemCard anchor, ItemCard target, boolean additive) {
         int anchorIdx = allCards.indexOf(anchor);
         int targetIdx = allCards.indexOf(target);
         if (anchorIdx < 0 || targetIdx < 0) {
-            clearSelection();
+            clearSelectionQuiet();
             if (target instanceof FolderCard) {
                 selectedFolders.add(target.getFile());
             } else if (target instanceof FileCard) {
@@ -403,6 +419,7 @@ public class FXBrowserPanel extends JPanel {
             }
             target.setSelected(true);
             lastSelected = target;
+            fireSelectionChanged();
             return;
         }
 
@@ -424,9 +441,15 @@ public class FXBrowserPanel extends JPanel {
             }
         }
         grid.repaint();
+        fireSelectionChanged();
     }
 
     protected void clearSelection() {
+        clearSelectionQuiet();
+        fireSelectionChanged();
+    }
+
+    private void clearSelectionQuiet() {
         allCards.forEach(c -> c.setSelected(false));
         selectedFiles.clear();
         selectedFolders.clear();
@@ -445,6 +468,7 @@ public class FXBrowserPanel extends JPanel {
         }
         lastSelected = allCards.get(allCards.size() - 1);
         grid.repaint();
+        fireSelectionChanged();
     }
 
     public File getCurrentDir() {
@@ -472,17 +496,21 @@ public class FXBrowserPanel extends JPanel {
     }
 
     public void setFilter(String text) {
-        filterText = (text == null) ? "" : text.trim().toLowerCase();
-        refresh();
+        filterText = (text == null) ? "" : text.trim().toLowerCase(Locale.ROOT);
+        onFilterChanged();
     }
 
-    public void setFilterType(FilterType type) {
-        filterType = (type == null) ? FilterType.ALL : type;
-        refresh();
+    protected void onFilterChanged() {
+        rebuildView(false);
     }
 
     public FilterType getFilterType() {
         return filterType;
+    }
+
+    public void setFilterType(FilterType type) {
+        filterType = (type == null) ? FilterType.ALL : type;
+        onFilterChanged();
     }
 
     protected boolean isFolderItem(File f) {
@@ -509,29 +537,107 @@ public class FXBrowserPanel extends JPanel {
             boolean isDir = f.isDirectory();
             if (isDir) {
                 String srcAbs = f.getAbsolutePath();
-                if (destAbs.equals(srcAbs) || destAbs.startsWith(srcAbs + File.separator)) continue;
+                if (destAbs.equals(srcAbs) || FileOps.isInside(destDir, f)) continue;
             }
             if (dest.exists()) {
                 ConflictResolution resolution = resolver.resolve(this, dest);
                 if (resolution.action() == ConflictResolution.ACTION_CANCEL) break;
                 if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
                 dest = resolution.targetFile();
-                if (dest.exists()) {
-                    boolean removed = isDir ? FileOps.deleteRecursively(dest) : dest.delete();
-                    if (!removed) {
-                        MenuLog.warn("Could not remove conflicting destination before move: " + dest.getAbsolutePath());
-                        continue;
-                    }
-                }
             }
             File finalDest = dest;
             File source = f;
-            if (FileOps.moveFileOrDirectory(source, finalDest)) {
+            if (FileOps.replaceMove(source, finalDest)) {
                 count++;
                 if (postMoveHook != null) postMoveHook.accept(source, finalDest);
+            } else {
+                moveFailures.add(f.getName());
             }
         }
         return count;
+    }
+
+    public boolean isInternalDragItem(File file) {
+        if (file == null) return false;
+        for (Supplier<File> supplier : rootSuppliers) {
+            File root = supplier.get();
+            if (root != null && FileOps.isInside(file, root)) return true;
+        }
+        return false;
+    }
+
+    protected File externalImportTarget(File destDir) {
+        return destDir != null && destDir.isDirectory() ? destDir : null;
+    }
+
+    protected void afterExternalImport(List<File> imported, File destDir) {
+    }
+
+    public void performExternalDropWithFeedback(List<File> dropped, File destDir) {
+        File targetDir = externalImportTarget(destDir);
+        if (dropped == null || targetDir == null) return;
+
+        List<File> sources = new ArrayList<>();
+        for (File f : dropped) {
+            if (f != null && f.isFile() && matchesDisplayExtension(f)) sources.add(f);
+        }
+        if (sources.isEmpty()) {
+            JOptionPane.showMessageDialog(this, MenuMessages.tOr("plugin.photon.resourcemenu.drop.unsupported",
+                    "Only files supported by this menu can be dropped here. Use the Import button for other files."));
+            return;
+        }
+
+        int invalidNames = (int) sources.stream()
+                .filter(s -> FileNameRules.requiresStrictNaming(FileNameParts.of(s).extension())
+                        && !FileNameRules.isValidStrictFileName(s.getName()))
+                .count();
+        int conflictCount = (int) sources.stream().filter(s -> new File(targetDir, s.getName()).exists()).count();
+        InvalidNameResolver nameResolver = new InvalidNameResolver(invalidNames);
+        BulkConflictResolver conflictResolver = new BulkConflictResolver(conflictCount, sources.size() >= 2);
+        List<File> imported = new ArrayList<>();
+        Exception[] failure = new Exception[1];
+
+        beginInternalMutation();
+        EdtSupport.runFileTaskInBackground(this, () -> {
+            try {
+                for (File source : sources) {
+                    String fileName = source.getName();
+                    if (FileNameRules.requiresStrictNaming(FileNameParts.of(source).extension())) {
+                        fileName = nameResolver.resolve(this, fileName);
+                        if (fileName == null) continue;
+                    }
+                    File destFile = new File(targetDir, fileName);
+                    ConflictResolution resolution = conflictResolver.resolve(this, destFile);
+                    if (resolution.action() == ConflictResolution.ACTION_CANCEL) break;
+                    if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
+                    destFile = resolution.targetFile();
+                    FileOps.copyReplacing(source, destFile);
+                    imported.add(destFile);
+                }
+            } catch (Exception ex) {
+                failure[0] = ex;
+            }
+        }, () -> {
+            try {
+                if (!imported.isEmpty()) {
+                    afterExternalImport(imported, destDir);
+                    refresh();
+                }
+                if (failure[0] != null) {
+                    JOptionPane.showMessageDialog(this,
+                            L10N.t("plugin.photon.resourcemenu.import.failed") + failure[0].getMessage(),
+                            L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
+                } else if (!imported.isEmpty()) {
+                    JOptionPane.showMessageDialog(this, MenuMessages.buildItemLabel(imported.size(), 0) + " "
+                            + L10N.t("plugin.photon.resourcemenu.action.imported")
+                            + BulkConflictResolver.autoRenameNotice(conflictResolver));
+                } else {
+                    JOptionPane.showMessageDialog(this, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
+                }
+            } finally {
+                endInternalMutation();
+            }
+        });
     }
 
     public void performMoveWithFeedback(List<File> filesToMove, File destDir) {
@@ -549,6 +655,7 @@ public class FXBrowserPanel extends JPanel {
                 + BulkConflictResolver.countConflicts(folders, destDir);
         BulkConflictResolver resolver = new BulkConflictResolver(conflictCount);
         int[] counts = new int[2];
+        moveFailures.clear();
 
         beginInternalMutation();
         EdtSupport.runFileTaskInBackground(this, () -> {
@@ -561,7 +668,11 @@ public class FXBrowserPanel extends JPanel {
                     refresh();
                     JOptionPane.showMessageDialog(this,
                             MenuMessages.buildItemLabel(counts[0], counts[1]) + " " + L10N.t("plugin.photon.resourcemenu.action.moved")
-                                    + " \u2192 \"" + getFolderName(destDir) + "\"" + BulkConflictResolver.autoRenameNotice(resolver));
+                                    + " \u2192 \"" + getFolderName(destDir) + "\"" + BulkConflictResolver.autoRenameNotice(resolver)
+                                    + MenuMessages.buildFailureSummary(new ArrayList<>(moveFailures)));
+                } else if (!moveFailures.isEmpty()) {
+                    JOptionPane.showMessageDialog(this, MenuMessages.buildFailureSummary(new ArrayList<>(moveFailures)).trim(),
+                            L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
                 } else if (resolver.wasCancelled()) {
                     JOptionPane.showMessageDialog(this, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                 }
@@ -580,15 +691,51 @@ public class FXBrowserPanel extends JPanel {
     }
 
     public void refresh() {
+        rebuildView(true);
+    }
+
+    private void recoverMissingCurrentDir(List<File> roots) {
+        File candidate = currentDir.getParentFile();
+        while (candidate != null && !candidate.isDirectory()) {
+            candidate = candidate.getParentFile();
+        }
+        File fallback = null;
+        if (candidate != null) {
+            for (File root : roots) {
+                if (root != null && FileOps.isInside(candidate, root)) {
+                    fallback = candidate;
+                    break;
+                }
+            }
+        }
+        if (fallback == null && roots.size() == 1) {
+            fallback = roots.get(0);
+        }
+        currentDir = fallback;
+        navHistory.removeIf(d -> d != null && !VIRTUAL_ROOT_SENTINEL.equals(d) && !d.isDirectory());
+    }
+
+    private void rebuildView(boolean relist) {
         List<File> roots = new ArrayList<>();
         for (Supplier<File> s : rootSuppliers) roots.add(s.get());
         List<File> dirs = new ArrayList<>();
         List<File> files = new ArrayList<>();
 
+        if (relist && currentDir != null && !currentDir.isDirectory()) {
+            recoverMissingCurrentDir(roots);
+        }
+
         if (currentDir == null) {
             dirs.addAll(roots);
         } else {
-            File[] entries = currentDir.listFiles();
+            File[] entries;
+            if (!relist && cachedEntries != null && currentDir.equals(cachedEntriesDir)) {
+                entries = cachedEntries;
+            } else {
+                entries = currentDir.listFiles();
+                cachedEntries = entries;
+                cachedEntriesDir = currentDir;
+            }
             if (entries != null) {
                 for (File entry : entries) {
                     if (entry.isDirectory()) {
@@ -603,8 +750,8 @@ public class FXBrowserPanel extends JPanel {
         }
 
         if (!filterText.isEmpty()) {
-            dirs.removeIf(d -> !d.getName().toLowerCase().contains(filterText));
-            files.removeIf(f -> !f.getName().toLowerCase().contains(filterText));
+            dirs.removeIf(d -> !d.getName().toLowerCase(Locale.ROOT).contains(filterText));
+            files.removeIf(f -> !f.getName().toLowerCase(Locale.ROOT).contains(filterText));
         }
         if (filterType == FilterType.FILE) dirs.clear();
         else if (filterType == FilterType.FOLDER) files.clear();
@@ -660,7 +807,7 @@ public class FXBrowserPanel extends JPanel {
             JLabel lbl = new JLabel(label);
             ComponentUtils.deriveFont(lbl, 11f);
             if (isCurrent) {
-                lbl.setForeground(new Color(200, 200, 200));
+                lbl.setForeground(MenuTheme.foregroundColor());
                 lbl.setFont(lbl.getFont().deriveFont(Font.BOLD));
             } else {
                 lbl.setForeground(MenuTheme.accentColor());
@@ -687,7 +834,7 @@ public class FXBrowserPanel extends JPanel {
             breadcrumbPanel.add(lbl);
             if (i < segments.size() - 1) {
                 JLabel sep = new JLabel(" / ");
-                sep.setForeground(new Color(90, 90, 90));
+                sep.setForeground(MenuTheme.foregroundColor(110));
                 ComponentUtils.deriveFont(sep, 11f);
                 breadcrumbPanel.add(sep);
             }

@@ -28,14 +28,16 @@ public final class BackupDeleteDialog {
         }
 
         JDialog dialog = new JDialog(owner, L10N.t("plugin.photon.workspacemenu.backup.delete.title"),
-                Dialog.ModalityType.APPLICATION_MODAL);
+                Dialog.ModalityType.DOCUMENT_MODAL);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         DialogUtils.closeOnEscape(dialog);
 
         JLabel selectionLabel = DialogUtils.mutedCaption();
 
-        JButton deleteButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.delete.confirm"));
-        JButton cancelButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
+        JButton deleteButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.delete.confirm"),
+                PhotonTheme.ButtonVariant.DANGER);
+        JButton cancelButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
         deleteButton.setEnabled(false);
 
         Runnable updateSelectionState = () -> {
@@ -64,10 +66,11 @@ public final class BackupDeleteDialog {
                 triggerDeleteIfEnabled);
 
         JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setOpaque(false);
         topPanel.add(selectionLabel, BorderLayout.EAST);
 
         JPanel content = new JPanel(new BorderLayout(10, 8));
-        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         content.add(picker.getComponent(), BorderLayout.CENTER);
         content.add(topPanel, BorderLayout.NORTH);
         content.add(DialogUtils.bottomButtonRow(cancelButton, deleteButton), BorderLayout.SOUTH);
@@ -94,7 +97,7 @@ public final class BackupDeleteDialog {
             return;
         }
 
-        SwingWorkers.runInBackground(dialog, new JButton[] { deleteButton, cancelButton },
+        SwingWorkers.runInBackground(dialog, new JButton[]{deleteButton, cancelButton},
                 () -> backup.deleteBackups(selected),
                 deletedCount -> {
                     Log.info("Deleted %d backup(s) via the Photon menu.", deletedCount);

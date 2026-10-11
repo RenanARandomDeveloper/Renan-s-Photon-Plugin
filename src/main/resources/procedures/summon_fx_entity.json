@@ -45,6 +45,9 @@
     ],
     "repeating_fields": [
       {
+        "name": "RequiredValues"
+      },
+      {
         "name": "Auto",
         "field_definition": {
           "type": "field_dropdown",

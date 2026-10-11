@@ -2,6 +2,7 @@ package ${package}.photon_plugin;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
 
@@ -13,6 +14,11 @@ public final class ModifyFXBlockServer {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private ModifyFXBlockServer() {
+    }
+
+    private static Identifier resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? Identifier.tryParse(name) : Identifier.tryParse("photon:" + name);
     }
 
     public static ModifyBuilder modify(BlockPos pos) {
@@ -84,6 +90,14 @@ public final class ModifyFXBlockServer {
                 if (sanitizedPositions.isEmpty()) {
                     LOGGER.warn("[ModifyFXBlockServer] All provided positions were null for effect modification{}.", describeEffect());
                     return;
+                }
+
+                if (this.effectName != null && !this.effectName.isEmpty()) {
+                    Identifier targetLocation = resolveEffectLocation(this.effectName);
+                    if (targetLocation == null) {
+                        LOGGER.warn("[ModifyFXBlockServer] Invalid effect name '{}' could not be parsed into an Identifier.", this.effectName);
+                        return;
+                    }
                 }
 
                 ServerEffectScheduler.queueServerWork(1, () -> {

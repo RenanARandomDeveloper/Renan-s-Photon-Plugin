@@ -1,6 +1,5 @@
 package net.renan.photonplugin.menus.resource.common.fx.actions;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.blockly.FXListManager;
@@ -9,6 +8,7 @@ import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserP
 import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.MenuLog;
@@ -33,7 +33,7 @@ public final class VirtualCloneAction {
     }
 
     public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store,
-                                 Supplier<File> targetDirGetter) {
+                                Supplier<File> targetDirGetter) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.clone.element"), "16px_photon.clone");
         btn.addActionListener(e -> {
             List<File> sourceFiles = browser.getSelectedFiles();
@@ -89,8 +89,7 @@ public final class VirtualCloneAction {
                     destFile = resolution.targetFile();
 
                     try {
-                        if (destFile.exists()) destFile.delete();
-                        FileIO.copyFile(src, destFile);
+                        FileOps.copyReplacing(src, destFile);
                         singleClonedFiles.add(destFile);
                         counts[0]++;
                     } catch (Exception ex) {
@@ -131,7 +130,7 @@ public final class VirtualCloneAction {
                             FileNameParts parts = FileNameParts.of(f);
                             File destFile = generateUniqueClonePath(rootDir, parts.baseName(), canonicalExtension(parts.extension()));
                             try {
-                                FileIO.copyFile(f, destFile);
+                                FileOps.copyReplacing(f, destFile);
                                 clonedList.add(destFile);
                                 allClonedFiles.add(destFile);
                             } catch (Exception ex) {
@@ -174,7 +173,7 @@ public final class VirtualCloneAction {
     }
 
     private static void recreateSubtree(VirtualFolderStore store, String newRootFullPath,
-                                         Map<String, List<File>> clonedByRelative) {
+                                        Map<String, List<File>> clonedByRelative) {
         List<String> relativePaths = new ArrayList<>(clonedByRelative.keySet());
         relativePaths.sort(Comparator.comparingInt(VirtualCloneAction::depthOf));
         for (String relative : relativePaths) {
@@ -192,7 +191,7 @@ public final class VirtualCloneAction {
     }
 
     private static String promptUniqueVirtualFolderName(MCreator mcreator, VirtualFolderStore store, String parentPath,
-                                                          String currentFolderName, String progress, InvalidNameResolver nameResolver) {
+                                                        String currentFolderName, String progress, InvalidNameResolver nameResolver) {
         while (true) {
             String name = promptCloneFolderName(mcreator, currentFolderName, progress, nameResolver);
             if (name == null) return null;

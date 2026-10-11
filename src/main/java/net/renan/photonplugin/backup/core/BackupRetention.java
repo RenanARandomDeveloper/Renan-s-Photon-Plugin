@@ -4,8 +4,10 @@ import net.renan.photonplugin.log.Log;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 
 public final class BackupRetention {
     private BackupRetention() {
@@ -60,15 +62,24 @@ public final class BackupRetention {
 
         Arrays.sort(entries, Comparator.comparing(BackupNaming::getBackupCreationDate));
 
-        int amountToDelete = entries.length - maxBackups;
-        int deleted = 0;
+        List<File> deletable = new ArrayList<>();
+        boolean activePresent = false;
         for (File entry : entries) {
+            String baseName = entry.getName().replaceAll("(?i)\\.zip$", "");
+            if (baseName.equalsIgnoreCase(activeNameToKeep)) {
+                activePresent = true;
+            } else {
+                deletable.add(entry);
+            }
+        }
+
+        int allowedNonActive = activePresent ? maxBackups - 1 : maxBackups;
+        int amountToDelete = deletable.size() - allowedNonActive;
+
+        int deleted = 0;
+        for (File entry : deletable) {
             if (deleted >= amountToDelete) {
                 break;
-            }
-            String baseName = entry.getName().replaceAll("(?i)\\.zip$", "");
-            if (activeNameToKeep != null && baseName.equalsIgnoreCase(activeNameToKeep)) {
-                continue;
             }
             if (deleteEntry(entry)) {
                 deleted++;

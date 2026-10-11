@@ -17,6 +17,14 @@ public class InvalidNameResolver {
         this.showApplyAll = totalItems >= MIN_ITEMS_FOR_APPLY_ALL;
     }
 
+    private static boolean isNameValid(String name, boolean strict) {
+        return strict ? FileNameRules.isValidStrictFileName(name) : FileNameRules.isValidLooseFileName(name);
+    }
+
+    private static String sanitizeName(String name, boolean strict) {
+        return strict ? FileNameRules.sanitizeStrictFileName(name) : FileNameRules.sanitizeLooseFileName(name);
+    }
+
     public String resolve(Component parent, String originalName) {
         return resolve(parent, originalName, null, true);
     }
@@ -55,7 +63,7 @@ public class InvalidNameResolver {
                     L10N.t("plugin.photon.resourcemenu.name.type.manually"),
                     L10N.t("plugin.photon.resourcemenu.operation.cancel.button")
             };
-            int choice = EdtSupport.onEdt(() -> JOptionPane.showOptionDialog(
+            int choice = EdtSupport.onEdtChoice(() -> JOptionPane.showOptionDialog(
                     parent, content,
                     L10N.t("plugin.photon.resourcemenu.operation.warning"),
                     JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
@@ -70,7 +78,10 @@ public class InvalidNameResolver {
                         : "plugin.photon.resourcemenu.name.manual.entry.loose.message";
                 String typed = EdtSupport.onEdt(() -> JOptionPane.showInputDialog(parent,
                         messagePrefix + L10N.t(manualEntryKey), suggestion));
-                if (typed == null) continue;
+                if (typed == null) {
+                    if (EdtSupport.isAborted()) return null;
+                    continue;
+                }
                 typed = typed.trim();
                 if (typed.isEmpty()) {
                     EdtSupport.onEdtVoid(() -> JOptionPane.showMessageDialog(parent,
@@ -85,13 +96,5 @@ public class InvalidNameResolver {
             }
         }
         return name;
-    }
-
-    private static boolean isNameValid(String name, boolean strict) {
-        return strict ? FileNameRules.isValidStrictFileName(name) : FileNameRules.isValidLooseFileName(name);
-    }
-
-    private static String sanitizeName(String name, boolean strict) {
-        return strict ? FileNameRules.sanitizeStrictFileName(name) : FileNameRules.sanitizeLooseFileName(name);
     }
 }

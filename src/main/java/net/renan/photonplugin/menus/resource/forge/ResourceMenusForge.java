@@ -7,6 +7,7 @@ import net.renan.photonplugin.menus.resource.common.ResourceMenuResource;
 import net.renan.photonplugin.menus.resource.common.ResourceMenuTexture;
 import net.renan.photonplugin.menus.resource.common.fx.ResourceMenuFX;
 import net.renan.photonplugin.menus.resource.core.tabs.ResourceTabManager;
+import net.renan.photonplugin.menus.resource.preview.common.PreviewMode;
 
 import javax.swing.*;
 import java.awt.*;
@@ -49,10 +50,12 @@ public class ResourceMenusForge {
         tabs.setOpaque(false);
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.fx"),
-                ResourceMenuFX.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FX)));
+                ResourceMenuFX.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FX), true,
+                        PreviewMode.FORGE));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.fxproj"),
-                ResourceMenuFXProject.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FXPROJ)));
+                ResourceMenuFXProject.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_FXPROJ), true,
+                        PreviewMode.FORGE));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.mesh.model"),
                 ResourceMenuForgeModel.createPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_MODEL_OBJ),

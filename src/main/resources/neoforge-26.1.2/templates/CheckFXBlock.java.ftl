@@ -16,6 +16,11 @@ public final class CheckFXBlock {
     private CheckFXBlock() {
     }
 
+    private static Identifier resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? Identifier.tryParse(name) : Identifier.tryParse("photon:" + name);
+    }
+
     public static QueryBuilder check(BlockPos pos) {
         return new QueryBuilder(pos);
     }
@@ -71,7 +76,7 @@ public final class CheckFXBlock {
                 return true;
             }
 
-            Identifier targetLocation = Identifier.tryParse("photon:" + effectName);
+            Identifier targetLocation = resolveEffectLocation(effectName);
             if (targetLocation == null) {
                 LOGGER.warn("[CheckFXBlock] Invalid effect name '{}' could not be parsed into a Identifier.", effectName);
                 return false;

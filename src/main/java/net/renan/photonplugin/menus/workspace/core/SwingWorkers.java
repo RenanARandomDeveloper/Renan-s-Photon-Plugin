@@ -18,6 +18,16 @@ public final class SwingWorkers {
                                            Consumer<T> onSuccess, Consumer<IOException> onFailure) {
         owner.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         setEnabled(componentsToToggle, false);
+
+        JDialog dialogOwner = owner instanceof JDialog ? (JDialog) owner : null;
+        int previousCloseOperation = -1;
+        if (dialogOwner != null) {
+            previousCloseOperation = dialogOwner.getDefaultCloseOperation();
+            dialogOwner.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+            DialogUtils.setEscapeCloseEnabled(dialogOwner, false);
+        }
+        int finalPreviousCloseOperation = previousCloseOperation;
+
         new SwingWorker<T, Void>() {
             private IOException failure;
 
@@ -33,17 +43,30 @@ public final class SwingWorkers {
 
             @Override
             protected void done() {
-                owner.setCursor(Cursor.getDefaultCursor());
+                if (owner.isDisplayable()) {
+                    owner.setCursor(Cursor.getDefaultCursor());
+                }
                 setEnabled(componentsToToggle, true);
+                if (dialogOwner != null) {
+                    dialogOwner.setDefaultCloseOperation(finalPreviousCloseOperation);
+                    DialogUtils.setEscapeCloseEnabled(dialogOwner, true);
+                }
+
                 if (failure != null) {
                     onFailure.accept(failure);
                     return;
                 }
+
+                T result;
                 try {
-                    onSuccess.accept(get());
+                    result = get();
                 } catch (Exception e) {
-                    onFailure.accept(new IOException(e));
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    onFailure.accept(cause instanceof IOException ? (IOException) cause : new IOException(cause));
+                    return;
                 }
+
+                onSuccess.accept(result);
             }
         }.execute();
     }

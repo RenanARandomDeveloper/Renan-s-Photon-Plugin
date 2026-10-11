@@ -5,7 +5,6 @@ import net.mcreator.ui.component.util.ComponentUtils;
 import net.mcreator.ui.init.UIRES;
 
 import javax.swing.*;
-import java.awt.*;
 
 public final class MenuToolbars {
 
@@ -29,7 +28,7 @@ public final class MenuToolbars {
         }
         button.setContentAreaFilled(false);
         button.setOpaque(false);
-        button.setForeground(Color.WHITE);
+        button.setForeground(MenuTheme.foregroundColor());
         button.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
         ComponentUtils.deriveFont(button, 12.0F);
         return button;

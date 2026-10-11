@@ -19,6 +19,11 @@ public final class SummonFXEntityServer {
     private SummonFXEntityServer() {
     }
 
+    private static Identifier resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? Identifier.tryParse(name) : Identifier.tryParse("photon:" + name);
+    }
+
     public static EffectBuilder create(Entity entity) {
         return new EffectBuilder(entity != null ? List.of(entity) : null);
     }
@@ -113,8 +118,14 @@ public final class SummonFXEntityServer {
                 }
                 ServerEffectScheduler.queueServerWork(1, () -> {
                     try {
+                        Identifier fxLocation = resolveEffectLocation(this.effectName);
+                        if (fxLocation == null) {
+                            LOGGER.warn("[SummonFXEntityServer] Invalid effect name '{}' could not be parsed into an Identifier.", this.effectName);
+                            return;
+                        }
+
                         var effectPacket = new EntityEffectCommand();
-                        effectPacket.setLocation(Identifier.fromNamespaceAndPath("photon", this.effectName));
+                        effectPacket.setLocation(fxLocation);
                         effectPacket.setEntities(sanitizedEntities);
                         effectPacket.setOffset(this.offset);
                         effectPacket.setRotation(this.rotation);

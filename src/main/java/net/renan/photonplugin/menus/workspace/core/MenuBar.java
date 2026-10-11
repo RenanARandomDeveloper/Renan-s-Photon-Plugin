@@ -26,14 +26,7 @@ public final class MenuBar {
 
         JMenu photonMenu = buildMenu(mcreator, componentLabel, componentVersion, libLabel, libVersion);
 
-        int insertIndex = menuBar.getMenuCount();
-        for (int i = 0; i < menuBar.getMenuCount(); i++) {
-            JMenu menu = menuBar.getMenu(i);
-            if (menu != null && "Help".equalsIgnoreCase(String.valueOf(menu.getText()))) {
-                insertIndex = i + 1;
-                break;
-            }
-        }
+        int insertIndex = resolveInsertIndex(menuBar);
 
         menuBar.add(photonMenu, insertIndex);
         refresh(menuBar);
@@ -56,6 +49,11 @@ public final class MenuBar {
                 break;
             }
         }
+    }
+
+    private static int resolveInsertIndex(JMenuBar menuBar) {
+        int menuCount = menuBar.getMenuCount();
+        return menuCount > 0 ? menuCount - 1 : menuCount;
     }
 
     private static void refresh(JMenuBar menuBar) {

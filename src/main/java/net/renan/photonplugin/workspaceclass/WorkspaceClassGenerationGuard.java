@@ -3,24 +3,44 @@ package net.renan.photonplugin.workspaceclass;
 import net.mcreator.ui.MCreator;
 import net.mcreator.workspace.Workspace;
 import net.mcreator.workspace.settings.WorkspaceSettings;
+import net.renan.photonplugin.WatchService;
 import net.renan.photonplugin.log.Log;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.function.Predicate;
 
 public final class WorkspaceClassGenerationGuard {
 
-    private static final long RETRY_BACKOFF_MS = 1000L;
+    private static final long LIVENESS_CHECK_INTERVAL_SECONDS = 3L;
+    private static final long DELETE_DEBOUNCE_MILLIS = 400L;
 
-    private static final ConcurrentHashMap<String, Watcher> ACTIVE_WATCHERS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, WatchEntry> ACTIVE_WATCHERS = new ConcurrentHashMap<>();
+
+    private static final ScheduledExecutorService DEBOUNCE_EXECUTOR = Executors.newScheduledThreadPool(2, runnable -> {
+        Thread thread = new Thread(runnable, "Photon-ClassGenWatcher-Debounce");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private static final ScheduledExecutorService LIVENESS_CHECKER = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "Photon-ClassGenWatcher-LivenessCheck");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    static {
+        LIVENESS_CHECKER.scheduleWithFixedDelay(WorkspaceClassGenerationGuard::pruneClosedWorkspaces,
+                LIVENESS_CHECK_INTERVAL_SECONDS, LIVENESS_CHECK_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    }
 
     private WorkspaceClassGenerationGuard() {
     }
 
     public static void startWatching(MCreator mcreator, Runnable generatorCall) {
-        String key = sessionKey(mcreator);
+        String key = WorkspacePaths.sessionKey(mcreator);
         if (key == null) {
             return;
         }
@@ -31,7 +51,18 @@ public final class WorkspaceClassGenerationGuard {
             return;
         }
 
-        Path targetPackageDir = resolveTargetPackageDir(workspace, settings);
+        if (!isPhotonDependency(settings)) {
+            stopWatching(mcreator);
+            return;
+        }
+
+        Path targetPackageDir;
+        try {
+            targetPackageDir = WorkspacePaths.resolveTargetPackageDir(workspace, settings);
+        } catch (WorkspacePaths.InvalidWorkspacePathException e) {
+            Log.error(e.getMessage());
+            return;
+        }
         if (targetPackageDir == null) {
             return;
         }
@@ -46,44 +77,54 @@ public final class WorkspaceClassGenerationGuard {
                 existing.stop();
             }
 
-            Watcher watcher = new Watcher(mcreator, targetPackageDir, watchedParent, generatorCall);
-            watcher.start();
-            return watcher;
+            WatchEntry entry = new WatchEntry(mcreator, targetPackageDir, generatorCall);
+            Predicate<Path> exclusion = path ->
+                    !path.equals(watchedParent)
+                            && !path.equals(targetPackageDir)
+                            && !path.startsWith(targetPackageDir);
+
+            entry.handleMissing();
+
+            entry.watchService.start(List.of(watchedParent), exclusion, (root, changed, kind) -> {
+                if (kind == WatchService.ChangeKind.OVERFLOW) {
+                    entry.scheduleHandleMissing();
+                    return;
+                }
+                if (kind == WatchService.ChangeKind.DELETE
+                        && (changed.equals(targetPackageDir) || changed.startsWith(targetPackageDir))) {
+                    entry.scheduleHandleMissing();
+                }
+            });
+
+            return entry;
         });
     }
 
     public static void stopWatching(MCreator mcreator) {
-        String key = sessionKey(mcreator);
+        String key = WorkspacePaths.sessionKey(mcreator);
         if (key == null) {
             return;
         }
 
-        ACTIVE_WATCHERS.computeIfPresent(key, (k, watcher) -> {
-            watcher.stop();
+        ACTIVE_WATCHERS.computeIfPresent(key, (k, entry) -> {
+            entry.stop();
             return null;
+        });
+    }
+
+    private static void pruneClosedWorkspaces() {
+        ACTIVE_WATCHERS.entrySet().removeIf(mapEntry -> {
+            WatchEntry entry = mapEntry.getValue();
+            if (entry.mcreator.getWorkspace() != null) {
+                return false;
+            }
+            entry.stop();
+            return true;
         });
     }
 
     private static boolean isPhotonDependency(WorkspaceSettings settings) {
         return settings.getMCreatorDependencies() != null && settings.getMCreatorDependencies().contains("photon_plugin");
-    }
-
-    private static Path resolveTargetPackageDir(Workspace workspace, WorkspaceSettings settings) {
-        String basePackage = settings.getModElementsPackage();
-        if (basePackage == null || basePackage.isBlank()) {
-            return null;
-        }
-
-        File workspaceFolderFile = workspace.getWorkspaceFolder();
-        if (workspaceFolderFile == null) {
-            return null;
-        }
-
-        return workspaceFolderFile.toPath().normalize()
-                .resolve("src/main/java")
-                .resolve(basePackage.replace('.', '/'))
-                .resolve(WorkspaceConstants.TARGET_SUB_PACKAGE)
-                .normalize();
     }
 
     private static boolean allFilesPresent(Path targetPackageDir) {
@@ -100,131 +141,44 @@ public final class WorkspaceClassGenerationGuard {
         return true;
     }
 
-    private static String sessionKey(MCreator mcreator) {
-        if (mcreator == null) {
-            return null;
-        }
-
-        File workspaceFolder = mcreator.getWorkspaceFolder();
-        if (workspaceFolder == null) {
-            return null;
-        }
-
-        try {
-            return workspaceFolder.getCanonicalPath();
-        } catch (IOException e) {
-            return workspaceFolder.getAbsolutePath();
-        }
-    }
-
-    private static final class Watcher {
+    private static final class WatchEntry {
 
         private final MCreator mcreator;
         private final Path targetPackageDir;
-        private final Path watchedParent;
         private final Runnable generatorCall;
-        private volatile boolean running = true;
-        private volatile WatchService currentService;
-        private Thread thread;
+        private final WatchService watchService = new WatchService();
+        private volatile ScheduledFuture<?> pendingCheck;
 
-        Watcher(MCreator mcreator, Path targetPackageDir, Path watchedParent, Runnable generatorCall) {
+        WatchEntry(MCreator mcreator, Path targetPackageDir, Runnable generatorCall) {
             this.mcreator = mcreator;
             this.targetPackageDir = targetPackageDir;
-            this.watchedParent = watchedParent;
             this.generatorCall = generatorCall;
         }
 
-        void start() {
-            thread = new Thread(this::run, "Photon-ClassGenWatcher");
-            thread.setDaemon(true);
-            thread.start();
+        void scheduleHandleMissing() {
+            ScheduledFuture<?> previous = pendingCheck;
+            if (previous != null) {
+                previous.cancel(false);
+            }
+            pendingCheck = DEBOUNCE_EXECUTOR.schedule(this::handleMissing, DELETE_DEBOUNCE_MILLIS, TimeUnit.MILLISECONDS);
         }
 
         void stop() {
-            running = false;
-            WatchService service = currentService;
-            if (service != null) {
-                try {
-                    service.close();
-                } catch (IOException ignored) {
-                }
+            ScheduledFuture<?> previous = pendingCheck;
+            if (previous != null) {
+                previous.cancel(false);
             }
-            if (thread != null) {
-                thread.interrupt();
-            }
+            watchService.stop();
         }
 
-        private void run() {
-            try {
-                handleMissing();
-
-                while (running && isWorkspaceStillOpen()) {
-                    try {
-                        watchOnce();
-                    } catch (IOException e) {
-                        Log.warn("Photon class-generation watcher hit an I/O error, retrying: " + e.getMessage());
-                    } catch (RuntimeException e) {
-                        Log.warn("Photon class-generation watcher hit an unexpected error, retrying: " + e.getMessage());
-                    }
-
-                    if (running) {
-                        Thread.sleep(RETRY_BACKOFF_MS);
-                    }
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-
-        private void watchOnce() throws IOException, InterruptedException {
-            if (Files.notExists(watchedParent)) {
-                Files.createDirectories(watchedParent);
+        void handleMissing() {
+            Workspace workspace = mcreator.getWorkspace();
+            if (workspace == null) {
+                return;
             }
 
-            try (WatchService service = FileSystems.getDefault().newWatchService()) {
-                currentService = service;
-                watchedParent.register(service, StandardWatchEventKinds.ENTRY_DELETE);
-
-                while (running) {
-                    WatchKey key;
-                    try {
-                        key = service.take();
-                    } catch (ClosedWatchServiceException e) {
-                        return;
-                    }
-
-                    for (WatchEvent<?> event : key.pollEvents()) {
-                        WatchEvent.Kind<?> kind = event.kind();
-
-                        if (kind == StandardWatchEventKinds.OVERFLOW) {
-                            handleMissing();
-                            continue;
-                        }
-
-                        Object context = event.context();
-                        if (!(context instanceof Path)) {
-                            continue;
-                        }
-
-                        Path changedName = (Path) context;
-                        if (!changedName.getFileName().equals(targetPackageDir.getFileName())) {
-                            continue;
-                        }
-
-                        if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
-                            handleMissing();
-                        }
-                    }
-
-                    if (!key.reset()) {
-                        return;
-                    }
-                }
-            }
-        }
-
-        private void handleMissing() {
-            if (!isDependencyStillActive()) {
+            WorkspaceSettings settings = workspace.getWorkspaceSettings();
+            if (settings == null || !isPhotonDependency(settings)) {
                 return;
             }
 
@@ -234,20 +188,6 @@ public final class WorkspaceClassGenerationGuard {
 
             Log.warn("Detected photon_plugin folder removal (likely a concurrent workspace task); regenerating.");
             generatorCall.run();
-        }
-
-        private boolean isDependencyStillActive() {
-            Workspace workspace = mcreator.getWorkspace();
-            if (workspace == null) {
-                return false;
-            }
-
-            WorkspaceSettings settings = workspace.getWorkspaceSettings();
-            return settings != null && isPhotonDependency(settings);
-        }
-
-        private boolean isWorkspaceStillOpen() {
-            return mcreator.getWorkspace() != null;
         }
     }
 }

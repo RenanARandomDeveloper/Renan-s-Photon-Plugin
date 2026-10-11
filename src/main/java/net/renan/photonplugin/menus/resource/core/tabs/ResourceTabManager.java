@@ -15,11 +15,6 @@ public final class ResourceTabManager {
     private ResourceTabManager() {
     }
 
-    @FunctionalInterface
-    public interface ResourceTabPanelFactory {
-        JPanel create(MCreator mcreator);
-    }
-
     private static Object invokeNoArgMethod(Object target, String methodName) {
         if (target == null) return null;
         for (Class<?> cls = target.getClass(); cls != null; cls = cls.getSuperclass()) {
@@ -173,5 +168,10 @@ public final class ResourceTabManager {
                 }
             }
         }
+    }
+
+    @FunctionalInterface
+    public interface ResourceTabPanelFactory {
+        JPanel create(MCreator mcreator);
     }
 }

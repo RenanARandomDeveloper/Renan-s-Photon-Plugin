@@ -11,6 +11,7 @@ import javax.annotation.Nonnull;
 import javax.swing.*;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -26,93 +27,6 @@ public class BlocklyJS {
         this.mcreator = mcreator;
         this.newApi = newApi;
         Log.info("bridge initialized (Using New API: %b)", newApi);
-    }
-
-    public Object getBridgeObject() {
-        return newApi ? new NewBridge(this) : new BridgeLegacy(this);
-    }
-
-    public static class NewBridge {
-        private final BlocklyJS parent;
-
-        public NewBridge(BlocklyJS parent) {
-            this.parent = parent;
-        }
-
-        @SuppressWarnings({"unused", "unchecked"})
-        public void openDataListEntrySelector(Consumer callback) {
-            parent.openSelectorNewApi((Consumer<String[]>) callback);
-        }
-    }
-
-    public static class BridgeLegacy {
-        private final BlocklyJS parent;
-
-        public BridgeLegacy(BlocklyJS parent) {
-            this.parent = parent;
-        }
-
-        @SuppressWarnings("unused")
-        public void openDataListEntrySelector(Object callback) {
-            parent.openSelectorLegacyApi(callback);
-        }
-    }
-
-    private void openSelectorNewApi(Consumer<String[]> callback) {
-        if (!tryAcquireDialogLock(callback)) return;
-
-        Log.info("Opening FX selector dialog (New API)...");
-        SwingUtilities.invokeLater(() -> {
-            String[] retval = runSelectorDialog("New API");
-            dialogOpen.set(false);
-            if (callback != null) {
-                callback.accept(retval);
-            }
-        });
-    }
-
-    private void openSelectorLegacyApi(Object jsCallback) {
-        Consumer<String[]> deliver = retval -> invokeJsCallback(jsCallback, retval);
-        if (!tryAcquireDialogLock(deliver)) return;
-
-        Log.info("Opening FX selector dialog (Legacy API)...");
-        FXCompat.runOnFxThreadOrDirect(() -> SwingUtilities.invokeLater(() -> {
-            String[] retval = runSelectorDialog("Legacy API");
-            dialogOpen.set(false);
-            platformExitNestedEventLoop(nestedLoopKey, retval);
-        }));
-
-        String[] retval = platformEnterNestedEventLoop(nestedLoopKey, buildDefaultRetval());
-        deliver.accept(retval);
-    }
-
-    private boolean tryAcquireDialogLock(Consumer<String[]> onBusyCallback) {
-        if (dialogOpen.compareAndSet(false, true)) {
-            return true;
-        }
-        Log.warn("FX selector is already open - duplicate request ignored.");
-        if (onBusyCallback != null) {
-            onBusyCallback.accept(buildDefaultRetval());
-        }
-        return false;
-    }
-
-    private String[] runSelectorDialog(String apiLabel) {
-        String[] retval = buildDefaultRetval();
-        try {
-            bringMCreatorToFront();
-            DataListEntry selected = openDialog();
-            if (selected != null) {
-                retval[0] = selected.getName();
-                retval[1] = selected.getReadableName();
-                Log.info("Selector selection finished (%s). Entry selected: %s (%s)", apiLabel, retval[0], retval[1]);
-            } else {
-                Log.info("Selector selection canceled by user (%s).", apiLabel);
-            }
-        } catch (Exception e) {
-            Log.error("Error in selector (" + apiLabel + ")", e);
-        }
-        return retval;
     }
 
     private static void platformExitNestedEventLoop(Object key, Object value) {
@@ -152,11 +66,96 @@ public class BlocklyJS {
             return;
         }
         try {
-            m.invoke(jsCallback, "callback", new Object[]{ retval[0], retval[1] });
+            m.invoke(jsCallback, "callback", new Object[]{retval[0], retval[1]});
             Log.info("Successfully invoked JS callback with values: [%s, %s]", retval[0], retval[1]);
         } catch (Throwable e) {
             Log.error("JS callback invocation failed", e);
         }
+    }
+
+    private static String[] buildDefaultRetval() {
+        return new String[]{"", L10N.t("blockly.extension.data_list_selector.no_entry")};
+    }
+
+    private static List<DataListEntry> getFXEntries(@Nonnull Workspace workspace) {
+        return FXListManager.getEntries(workspace.getWorkspaceFolder()).stream().map(name -> new DataListEntry.Dummy(name) {
+            @Override
+            public String getReadableName() {
+                if (name == null || name.isEmpty()) {
+                    return name;
+                }
+                return name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1);
+            }
+        }).collect(Collectors.toList());
+    }
+
+    public Object getBridgeObject() {
+        return newApi ? new NewBridge(this) : new BridgeLegacy(this);
+    }
+
+    private void openSelectorNewApi(Consumer<String[]> callback) {
+        if (!tryAcquireDialogLock(callback)) return;
+
+        Log.info("Opening FX selector dialog (New API)...");
+        SwingUtilities.invokeLater(() -> {
+            String[] retval = buildDefaultRetval();
+            try {
+                retval = runSelectorDialog("New API");
+            } finally {
+                dialogOpen.set(false);
+            }
+            if (callback != null) {
+                callback.accept(retval);
+            }
+        });
+    }
+
+    private void openSelectorLegacyApi(Object jsCallback) {
+        Consumer<String[]> deliver = retval -> invokeJsCallback(jsCallback, retval);
+        if (!tryAcquireDialogLock(deliver)) return;
+
+        Log.info("Opening FX selector dialog (Legacy API)...");
+        FXCompat.runOnFxThreadOrDirect(() -> SwingUtilities.invokeLater(() -> {
+            String[] retval = buildDefaultRetval();
+            try {
+                retval = runSelectorDialog("Legacy API");
+            } finally {
+                dialogOpen.set(false);
+                platformExitNestedEventLoop(nestedLoopKey, retval);
+            }
+        }));
+
+        String[] retval = platformEnterNestedEventLoop(nestedLoopKey, buildDefaultRetval());
+        deliver.accept(retval);
+    }
+
+    private boolean tryAcquireDialogLock(Consumer<String[]> onBusyCallback) {
+        if (dialogOpen.compareAndSet(false, true)) {
+            return true;
+        }
+        Log.warn("FX selector is already open - duplicate request ignored.");
+        if (onBusyCallback != null) {
+            onBusyCallback.accept(buildDefaultRetval());
+        }
+        return false;
+    }
+
+    private String[] runSelectorDialog(String apiLabel) {
+        String[] retval = buildDefaultRetval();
+        try {
+            bringMCreatorToFront();
+            DataListEntry selected = openDialog();
+            if (selected != null) {
+                retval[0] = selected.getName();
+                retval[1] = selected.getReadableName();
+                Log.info("Selector selection finished (%s). Entry selected: %s (%s)", apiLabel, retval[0], retval[1]);
+            } else {
+                Log.info("Selector selection canceled by user (%s).", apiLabel);
+            }
+        } catch (Throwable e) {
+            Log.error("Error in selector (" + apiLabel + ")", e);
+        }
+        return retval;
     }
 
     private void bringMCreatorToFront() {
@@ -175,19 +174,29 @@ public class BlocklyJS {
         );
     }
 
-    private static String[] buildDefaultRetval() {
-        return new String[]{ "", L10N.t("blockly.extension.data_list_selector.no_entry") };
+    public static class NewBridge {
+        private final BlocklyJS parent;
+
+        public NewBridge(BlocklyJS parent) {
+            this.parent = parent;
+        }
+
+        @SuppressWarnings({"unused", "unchecked"})
+        public void openDataListEntrySelector(Consumer callback) {
+            parent.openSelectorNewApi((Consumer<String[]>) callback);
+        }
     }
 
-    private static List<DataListEntry> getFXEntries(@Nonnull Workspace workspace) {
-        return FXListManager.getEntries(workspace.getWorkspaceFolder()).stream().map(name -> new DataListEntry.Dummy(name) {
-            @Override
-            public String getReadableName() {
-                if (name == null || name.isEmpty()) {
-                    return name;
-                }
-                return name.substring(0, 1).toUpperCase() + name.substring(1);
-            }
-        }).collect(Collectors.toList());
+    public static class BridgeLegacy {
+        private final BlocklyJS parent;
+
+        public BridgeLegacy(BlocklyJS parent) {
+            this.parent = parent;
+        }
+
+        @SuppressWarnings("unused")
+        public void openDataListEntrySelector(Object callback) {
+            parent.openSelectorLegacyApi(callback);
+        }
     }
 }

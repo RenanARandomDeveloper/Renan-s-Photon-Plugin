@@ -6,16 +6,15 @@ import net.renan.photonplugin.log.Log;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Predicate;
 
 public final class BackupWatcher {
     private static final long DEBOUNCE_MILLIS = 3000L;
+    private static final long MAX_DEBOUNCE_WAIT_MILLIS = 30_000L;
+    private static final long SHUTDOWN_GRACE_MILLIS = 15_000L;
     private static final ScheduledExecutorService DEBOUNCE_EXECUTOR =
-            Executors.newScheduledThreadPool(2, runnable -> {
+            Executors.newScheduledThreadPool(4, runnable -> {
                 Thread thread = new Thread(runnable, "Photon-Backup-Debounce");
                 thread.setDaemon(true);
                 return thread;
@@ -28,6 +27,7 @@ public final class BackupWatcher {
 
     private volatile List<Path> watchedRoots = List.of();
     private volatile ScheduledFuture<?> pendingBackup;
+    private volatile long debounceWindowStartedAt = 0L;
 
     public BackupWatcher(File backupsRootFolder, Runnable onChangeDetected, Runnable onDebouncedBackup) {
         this.backupsRootFolder = backupsRootFolder;
@@ -57,13 +57,31 @@ public final class BackupWatcher {
         }
     }
 
-    public synchronized void stop() {
+    public void stop() {
+        stop(false);
+    }
+
+    public synchronized void stop(boolean awaitInFlightBackup) {
         watchService.stop();
 
         if (pendingBackup != null) {
-            pendingBackup.cancel(false);
+            ScheduledFuture<?> future = pendingBackup;
+            boolean cancelled = future.cancel(false);
+            if (!cancelled && awaitInFlightBackup) {
+                try {
+                    future.get(SHUTDOWN_GRACE_MILLIS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    Log.warn("A backup for '%s' was still running after the shutdown grace period; "
+                            + "it may still be writing to disk.", backupsRootFolder);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException | CancellationException e) {
+                    Log.error("Error occurred while waiting for in-flight backup to finish.", e);
+                }
+            }
             pendingBackup = null;
         }
+        debounceWindowStartedAt = 0L;
     }
 
     public boolean isRunning() {
@@ -85,9 +103,21 @@ public final class BackupWatcher {
     }
 
     private synchronized void scheduleBackup() {
+        long now = System.currentTimeMillis();
         if (pendingBackup != null && !pendingBackup.isDone()) {
             pendingBackup.cancel(false);
         }
-        pendingBackup = DEBOUNCE_EXECUTOR.schedule(onDebouncedBackup, DEBOUNCE_MILLIS, TimeUnit.MILLISECONDS);
+        if (debounceWindowStartedAt == 0L) {
+            debounceWindowStartedAt = now;
+        }
+
+        long desiredFireAt = now + DEBOUNCE_MILLIS;
+        long latestAllowedFireAt = debounceWindowStartedAt + MAX_DEBOUNCE_WAIT_MILLIS;
+        long delay = Math.max(0L, Math.min(desiredFireAt, latestAllowedFireAt) - now);
+
+        pendingBackup = DEBOUNCE_EXECUTOR.schedule(() -> {
+            debounceWindowStartedAt = 0L;
+            onDebouncedBackup.run();
+        }, delay, TimeUnit.MILLISECONDS);
     }
 }

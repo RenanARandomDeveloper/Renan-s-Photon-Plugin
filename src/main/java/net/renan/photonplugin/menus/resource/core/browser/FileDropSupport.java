@@ -6,6 +6,7 @@ import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.dnd.*;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -16,13 +17,13 @@ public final class FileDropSupport {
     }
 
     public static void install(Component target, FXBrowserPanel browser, String targetDescription,
-                                Supplier<File> destinationSupplier, BooleanSupplier extraCondition,
-                                Runnable onDragEnter, Runnable onDragExit) {
-        new DropTarget(target, DnDConstants.ACTION_MOVE, new DropTargetAdapter() {
+                               Supplier<File> destinationSupplier, BooleanSupplier extraCondition,
+                               Runnable onDragEnter, Runnable onDragExit) {
+        new DropTarget(target, DnDConstants.ACTION_COPY_OR_MOVE, new DropTargetAdapter() {
             @Override
             public void dragEnter(DropTargetDragEvent dtde) {
                 if (canAccept(dtde)) {
-                    dtde.acceptDrag(DnDConstants.ACTION_MOVE);
+                    dtde.acceptDrag(chooseAction(dtde.getSourceActions()));
                     if (onDragEnter != null) onDragEnter.run();
                 } else {
                     dtde.rejectDrag();
@@ -36,7 +37,7 @@ public final class FileDropSupport {
 
             @Override
             public void dragOver(DropTargetDragEvent dtde) {
-                if (canAccept(dtde)) dtde.acceptDrag(DnDConstants.ACTION_MOVE);
+                if (canAccept(dtde)) dtde.acceptDrag(chooseAction(dtde.getSourceActions()));
             }
 
             @Override
@@ -53,14 +54,25 @@ public final class FileDropSupport {
                     return;
                 }
                 try {
-                    dtde.acceptDrop(DnDConstants.ACTION_MOVE);
+                    dtde.acceptDrop(chooseAction(dtde.getSourceActions()));
                     List<File> files = (List<File>) dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-                    browser.performMoveWithFeedback(files, dest);
+                    List<File> internal = new ArrayList<>();
+                    List<File> external = new ArrayList<>();
+                    for (File file : files) {
+                        if (browser.isInternalDragItem(file)) internal.add(file);
+                        else external.add(file);
+                    }
+                    if (!internal.isEmpty()) browser.performMoveWithFeedback(internal, dest);
+                    if (!external.isEmpty()) browser.performExternalDropWithFeedback(external, dest);
                     dtde.dropComplete(true);
                 } catch (Exception ex) {
                     MenuLog.warn("Drag-and-drop onto " + targetDescription + " failed: " + ex.getMessage());
                     dtde.dropComplete(false);
                 }
+            }
+
+            private int chooseAction(int sourceActions) {
+                return (sourceActions & DnDConstants.ACTION_COPY) != 0 ? DnDConstants.ACTION_COPY : DnDConstants.ACTION_MOVE;
             }
 
             private boolean canAccept(DropTargetDragEvent dtde) {

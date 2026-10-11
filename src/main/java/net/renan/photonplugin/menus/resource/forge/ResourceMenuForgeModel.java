@@ -9,6 +9,7 @@ import net.renan.photonplugin.log.Log;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 
@@ -39,12 +40,17 @@ import static net.renan.photonplugin.menus.resource.core.support.MenuMessages.bu
 import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolbarButton;
 
 public final class ResourceMenuForgeModel {
-    private ResourceMenuForgeModel() {}
+    private ResourceMenuForgeModel() {
+    }
 
     public static JPanel createPanel(MCreator mcreator, Supplier<File> objDirGetter, Supplier<File> jsonDirGetter) {
         FXBrowserPanel browser = new FXBrowserPanel(List.of(objDirGetter), OBJ_EXTENSION,
-                file -> {try { return scaleIconTo(UIRES.get("64px_photon.obj"), 64); }
-                catch (Exception ignored) { return null; }
+                file -> {
+                    try {
+                        return scaleIconTo(UIRES.get("64px_photon.obj"), 64);
+                    } catch (Exception ignored) {
+                        return null;
+                    }
                 }
         );
 
@@ -53,7 +59,7 @@ public final class ResourceMenuForgeModel {
         browser.setPostMoveHook((oldFile, newFile) -> {
             File objRoot = objDirGetter.get();
             File jsonRoot = jsonDirGetter.get();
-            if (oldFile.isDirectory()) {
+            if (newFile.isDirectory()) {
                 relocateMirroredJsonFolder(objRoot, jsonRoot, oldFile, newFile);
             } else {
                 syncCompanionsAfterObjRelocate(objRoot, jsonRoot, oldFile, newFile);
@@ -132,7 +138,8 @@ public final class ResourceMenuForgeModel {
                             }
                         });
                         if (mtlSource == null) {
-                            if (mismatched[0]) skippedNameMismatch[0]++; else skippedNoMtl[0]++;
+                            if (mismatched[0]) skippedNameMismatch[0]++;
+                            else skippedNoMtl[0]++;
                             continue;
                         }
 
@@ -152,10 +159,8 @@ public final class ResourceMenuForgeModel {
                         File destMtl = new File(targetDir, baseName + MTL_EXTENSION);
                         File destJson = mirrorJsonFileFor(objRoot, jsonRoot, destObj);
 
-                        if (destObj.exists()) destObj.delete();
-                        FileIO.copyFile(objSource, destObj);
-                        if (destMtl.exists()) destMtl.delete();
-                        FileIO.copyFile(mtlSource, destMtl);
+                        FileOps.copyReplacing(objSource, destObj);
+                        FileOps.copyReplacing(mtlSource, destMtl);
                         writeModelJson(destJson, objRoot, destObj);
 
                         importedObjFiles.add(destObj);
@@ -165,13 +170,15 @@ public final class ResourceMenuForgeModel {
                 }
             }, () -> {
                 try {
+                    if (!importedObjFiles.isEmpty()) {
+                        browser.refresh();
+                    }
                     if (failure[0] != null) {
                         Log.error("Failed to import model files into '" + targetDir.getAbsolutePath() + "'", failure[0]);
                         JOptionPane.showMessageDialog(mcreator,
                                 L10N.t("plugin.photon.resourcemenu.import.failed") + failure[0].getMessage(),
                                 L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
                     } else if (!importedObjFiles.isEmpty()) {
-                        browser.refresh();
                         StringBuilder suffix = new StringBuilder();
                         if (skippedNoMtl[0] > 0) {
                             suffix.append(" (").append(skippedNoMtl[0]).append(" ")
@@ -257,7 +264,7 @@ public final class ResourceMenuForgeModel {
         for (File child : children) {
             if (child.isDirectory()) {
                 fixModelReferencesRecursively(objRoot, jsonRoot, child);
-            } else if (child.getName().toLowerCase().endsWith(OBJ_EXTENSION)) {
+            } else if (child.getName().toLowerCase(java.util.Locale.ROOT).endsWith(OBJ_EXTENSION)) {
                 File json = mirrorJsonFileFor(objRoot, jsonRoot, child);
                 if (json.exists()) {
                     try {

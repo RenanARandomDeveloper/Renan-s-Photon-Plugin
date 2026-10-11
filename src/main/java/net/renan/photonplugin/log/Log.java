@@ -37,6 +37,10 @@ public final class Log {
         LogSessionRegistry.withWorkspace(workspaceFolder, task);
     }
 
+    public static boolean hasActiveSessionFor(File workspaceFolder) {
+        return LogSessionRegistry.peekSessionFor(workspaceFolder) != null;
+    }
+
     public static File getLogFileFor(File workspaceFolder) {
         return LogSessionRegistry.sessionFor(workspaceFolder).getLogFile();
     }
@@ -96,6 +100,8 @@ public final class Log {
     }
 
     private static String readPersisted(LogSession session) {
+        session.flushSync(LogConfig.FLUSH_WAIT_TIMEOUT_MS);
+
         File logFile = session.getLogFile();
         if (logFile != null && logFile.exists()) {
             try {

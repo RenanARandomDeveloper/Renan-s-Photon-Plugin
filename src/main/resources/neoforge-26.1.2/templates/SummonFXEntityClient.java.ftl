@@ -20,6 +20,11 @@ public final class SummonFXEntityClient {
     private SummonFXEntityClient() {
     }
 
+    private static Identifier resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? Identifier.tryParse(name) : Identifier.tryParse("photon:" + name);
+    }
+
     public static EffectBuilder create(Entity entity) {
         return new EffectBuilder(entity != null ? List.of(entity) : null);
     }
@@ -132,7 +137,11 @@ public final class SummonFXEntityClient {
 
         static void dispatch(List<Entity> entities, String effectName, Vec3 offset, Vec3 rotation, Vec3 scale,
                              int delay, boolean forcedDeath, boolean allowMulti, AutoRotate autoRotateMode) {
-            Identifier location = Identifier.fromNamespaceAndPath("photon", effectName);
+            Identifier location = resolveEffectLocation(effectName);
+            if (location == null) {
+                LOGGER.warn("[SummonFXEntityClient] Invalid effect name '{}' could not be parsed into an Identifier.", effectName);
+                return;
+            }
 
             Minecraft.getInstance().execute(() -> {
                 try {

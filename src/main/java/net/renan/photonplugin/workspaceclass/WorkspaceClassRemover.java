@@ -9,7 +9,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class WorkspaceClassRemover {
 
@@ -55,38 +57,51 @@ public class WorkspaceClassRemover {
             return result;
         }
 
-        Path workspaceFolder = workspace.getWorkspaceFolder().toPath().normalize();
-        Path targetPackageDir = workspaceFolder
-                .resolve("src/main/java")
-                .resolve(basePackage.replace('.', '/'))
-                .resolve(WorkspaceConstants.TARGET_SUB_PACKAGE)
-                .normalize();
-
-        if (!targetPackageDir.startsWith(workspaceFolder)) {
-            Log.error("Resolved target package directory '" + targetPackageDir + "' escapes the workspace folder.");
-            result.addError("Invalid base package: resolved path escapes the workspace folder.");
+        Path targetPackageDir;
+        try {
+            targetPackageDir = WorkspacePaths.resolveTargetPackageDir(workspace, settings);
+        } catch (WorkspacePaths.InvalidWorkspacePathException e) {
+            Log.error(e.getMessage());
+            result.addError(e.getMessage());
             return result;
         }
 
-        Log.info("Removing photon_plugin generated classes from: %s", targetPackageDir);
+        if (targetPackageDir == null) {
+            Log.error("Could not resolve the workspace folder, aborting.");
+            result.addError("Could not resolve the workspace folder.");
+            return result;
+        }
 
-        if (Files.notExists(targetPackageDir)) {
-            Log.info("Package '%s' does not exist, nothing to remove.", targetPackageDir);
-            for (String baseClassName : WorkspaceConstants.getBaseClassNames()) {
-                result.addNotFound(WorkspaceConstants.getJavaFileName(baseClassName));
+        String lockKey = WorkspacePaths.sessionKey(this.mcreator);
+        ReentrantLock lock = lockKey != null ? WorkspaceOperationLock.forKey(lockKey) : null;
+        if (lock != null) {
+            lock.lock();
+        }
+        try {
+            Log.info("Removing photon_plugin generated classes from: %s", targetPackageDir);
+
+            if (Files.notExists(targetPackageDir)) {
+                Log.info("Package '%s' does not exist, nothing to remove.", targetPackageDir);
+                for (String baseClassName : WorkspaceConstants.getBaseClassNames()) {
+                    result.addNotFound(WorkspaceConstants.getJavaFileName(baseClassName));
+                }
+                return result;
             }
-            return result;
+
+            for (String baseClassName : WorkspaceConstants.getBaseClassNames()) {
+                String fileName = WorkspaceConstants.getJavaFileName(baseClassName);
+                deleteGeneratedFile(targetPackageDir, fileName, result);
+            }
+
+            deleteDirectoryIfEmpty(targetPackageDir, result);
+
+            Log.info("Done. Deleted: %d, not found: %d, errors: %d", result.getDeletedCount(),
+                    result.getNotFoundCount(), result.getErrors().size());
+        } finally {
+            if (lock != null) {
+                lock.unlock();
+            }
         }
-
-        for (String baseClassName : WorkspaceConstants.getBaseClassNames()) {
-            String fileName = WorkspaceConstants.getJavaFileName(baseClassName);
-            deleteGeneratedFile(targetPackageDir, fileName, result);
-        }
-
-        deleteDirectoryIfEmpty(targetPackageDir, result);
-
-        Log.info("Done. Deleted: %d, not found: %d, errors: %d", result.getDeletedCount(),
-                result.getNotFoundCount(), result.getErrors().size());
 
         return result;
     }
@@ -160,15 +175,15 @@ public class WorkspaceClassRemover {
         }
 
         public List<String> getDeletedFiles() {
-            return this.deletedFiles;
+            return Collections.unmodifiableList(this.deletedFiles);
         }
 
         public List<String> getNotFoundFiles() {
-            return this.notFoundFiles;
+            return Collections.unmodifiableList(this.notFoundFiles);
         }
 
         public List<String> getErrors() {
-            return this.errors;
+            return Collections.unmodifiableList(this.errors);
         }
 
         public boolean hasErrors() {

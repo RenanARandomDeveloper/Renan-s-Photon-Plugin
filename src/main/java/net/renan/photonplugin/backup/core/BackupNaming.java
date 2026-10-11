@@ -1,6 +1,7 @@
 package net.renan.photonplugin.backup.core;
 
 import java.io.File;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -51,7 +52,6 @@ public final class BackupNaming {
         }
 
         long lastModified = file != null ? file.lastModified() : System.currentTimeMillis();
-        ZoneId zone = ZoneId.systemDefault();
-        return LocalDateTime.ofEpochSecond(lastModified / 1000, 0, zone.getRules().getOffset(LocalDateTime.now()));
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(lastModified), ZoneId.systemDefault());
     }
 }

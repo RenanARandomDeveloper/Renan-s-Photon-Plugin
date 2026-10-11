@@ -30,31 +30,42 @@ public final class BackupMenuDialog {
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         DialogUtils.closeOnEscape(dialog);
 
-        JButton backupNowButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.now"));
-        JButton exportButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.export"));
-        JButton restoreButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.restore"));
-        JButton deleteButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.delete"));
-        JButton openFolderButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.open_folder"));
+        JButton backupNowButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.now"),
+                PhotonTheme.ButtonVariant.PRIMARY);
+        JButton exportButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.export"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton restoreButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.restore"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton deleteButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.delete"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton openFolderButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.open_folder"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton closeButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
 
         equalizeWidths(backupNowButton, exportButton, restoreButton, deleteButton, openFolderButton);
 
-        backupNowButton.addActionListener(e -> performManualBackup(dialog, backup, backupNowButton));
+        JButton[] allButtons = {backupNowButton, exportButton, restoreButton, deleteButton, openFolderButton,
+                closeButton};
+
+        backupNowButton.addActionListener(e -> performManualBackup(dialog, backup, allButtons));
         exportButton.addActionListener(e -> BackupExportDialog.show(dialog, backup));
         restoreButton.addActionListener(e -> BackupRestoreDialog.show(dialog, backup));
         deleteButton.addActionListener(e -> BackupDeleteDialog.show(dialog, backup));
-        openFolderButton.addActionListener(e -> openBackupsFolder(dialog, backup));
+        openFolderButton.addActionListener(e -> openBackupsFolder(dialog, backup, allButtons));
+        closeButton.addActionListener(e -> dialog.dispose());
 
-        JPanel createSection = new JPanel();
+        JPanel createSection = PhotonTheme.card();
         createSection.setLayout(new BoxLayout(createSection, BoxLayout.Y_AXIS));
         createSection.setAlignmentX(Component.LEFT_ALIGNMENT);
-        createSection.add(DialogUtils.sectionTitle(L10N.t("plugin.photon.workspacemenu.backup.section.create")));
+        createSection.add(PhotonTheme.heading(L10N.t("plugin.photon.workspacemenu.backup.section.create")));
         createSection.add(DialogUtils.withCaption(backupNowButton,
                 L10N.t("plugin.photon.workspacemenu.backup.now.caption")));
 
-        JPanel manageSection = new JPanel();
+        JPanel manageSection = PhotonTheme.card();
         manageSection.setLayout(new BoxLayout(manageSection, BoxLayout.Y_AXIS));
         manageSection.setAlignmentX(Component.LEFT_ALIGNMENT);
-        manageSection.add(DialogUtils.sectionTitle(L10N.t("plugin.photon.workspacemenu.backup.section.manage")));
+        manageSection.add(PhotonTheme.heading(L10N.t("plugin.photon.workspacemenu.backup.section.manage")));
         manageSection.add(DialogUtils.withCaption(exportButton,
                 L10N.t("plugin.photon.workspacemenu.backup.export.caption")));
         manageSection.add(Box.createVerticalStrut(6));
@@ -69,14 +80,13 @@ public final class BackupMenuDialog {
 
         JPanel body = new JPanel();
         body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
-        body.setBorder(BorderFactory.createEmptyBorder(15, 15, 5, 15));
+        body.setBorder(BorderFactory.createEmptyBorder(16, 16, 8, 16));
         body.add(createSection);
-        body.add(Box.createVerticalStrut(16));
+        body.add(Box.createVerticalStrut(14));
         body.add(manageSection);
 
-        JButton closeButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
-        closeButton.addActionListener(e -> dialog.dispose());
         JPanel bottomPanel = DialogUtils.bottomButtonRow(closeButton);
+        bottomPanel.setBorder(BorderFactory.createEmptyBorder(0, 16, 14, 16));
 
         JPanel content = new JPanel(new BorderLayout());
         content.add(body, BorderLayout.CENTER);
@@ -103,7 +113,7 @@ public final class BackupMenuDialog {
         }
     }
 
-    private static void openBackupsFolder(Window owner, BackupService backup) {
+    private static void openBackupsFolder(Window owner, BackupService backup, JButton[] buttonsToDisable) {
         File backupsRootFolder = backup.getBackupsRootFolder();
         if (backupsRootFolder == null || !backupsRootFolder.exists()) {
             JOptionPane.showMessageDialog(owner,
@@ -111,18 +121,20 @@ public final class BackupMenuDialog {
                     L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.WARNING_MESSAGE);
             return;
         }
-        try {
+        SwingWorkers.runInBackground(owner, buttonsToDisable, () -> {
             Desktop.getDesktop().open(backupsRootFolder);
-        } catch (Exception ex) {
+            return null;
+        }, ignored -> {
+        }, ex -> {
             Log.error("Failed to open backups folder.", ex);
             JOptionPane.showMessageDialog(owner,
                     L10N.t("plugin.photon.workspacemenu.backup.open_folder.failure", ex.getMessage()),
                     L10N.t("plugin.photon.workspacemenu.backup.title"), JOptionPane.ERROR_MESSAGE);
-        }
+        });
     }
 
-    private static void performManualBackup(Window owner, BackupService backup, JButton backupNowButton) {
-        SwingWorkers.runInBackground(owner, new JButton[] { backupNowButton }, backup::createManualBackup,
+    private static void performManualBackup(Window owner, BackupService backup, JButton[] buttonsToDisable) {
+        SwingWorkers.runInBackground(owner, buttonsToDisable, backup::createManualBackup,
                 created -> {
                     String location = created != null ? created.getAbsolutePath() : "";
                     Log.info("Manual backup created at %s", location);

@@ -1,6 +1,5 @@
 package net.renan.photonplugin.menus.resource.core.actions;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
@@ -17,7 +16,6 @@ import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
 
 import javax.swing.*;
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -77,8 +75,7 @@ public final class CloneAction {
                     destFile = resolution.targetFile();
 
                     try {
-                        if (destFile.exists()) destFile.delete();
-                        FileIO.copyFile(src, destFile);
+                        FileOps.copyReplacing(src, destFile);
                         counts[0]++;
                     } catch (Exception ex) {
                         MenuLog.error("Failed to clone file '" + src.getAbsolutePath() + "' to '" + destFile.getAbsolutePath() + "'", ex);
@@ -106,7 +103,6 @@ public final class CloneAction {
                         }
                         if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
                         destFolder = resolution.targetFile();
-                        if (destFolder.exists()) FileOps.deleteRecursively(destFolder);
                     }
 
                     boolean hasSubDirs = false;
@@ -121,7 +117,7 @@ public final class CloneAction {
                     }
                     boolean recursive = true;
                     if (hasSubDirs) {
-                        int choice = EdtSupport.onEdt(() -> JOptionPane.showConfirmDialog(
+                        int choice = EdtSupport.onEdtChoice(() -> JOptionPane.showConfirmDialog(
                                 mcreator,
                                 L10N.t("plugin.photon.resourcemenu.clone.folder.has.subfolders", browser.getFolderName(src)),
                                 L10N.t("plugin.photon.resourcemenu.operation.question"),
@@ -136,10 +132,10 @@ public final class CloneAction {
                     File finalDestFolder = destFolder;
                     boolean finalRecursive = recursive;
                     try {
-                        if (!finalDestFolder.mkdirs())
-                            throw new IOException("Cannot create directory: " + finalDestFolder.getAbsolutePath());
-                        if (finalRecursive) FileOps.copyFolderContents(src, finalDestFolder);
-                        else FileOps.copyFolderContentsShallow(src, finalDestFolder);
+                        FileOps.replaceDirectory(finalDestFolder, () -> {
+                            if (finalRecursive) FileOps.copyFolderContents(src, finalDestFolder);
+                            else FileOps.copyFolderContentsShallow(src, finalDestFolder);
+                        });
                         counts[1]++;
                     } catch (Exception ex) {
                         MenuLog.error("Failed to clone folder '" + src.getAbsolutePath() + "' to '" + finalDestFolder.getAbsolutePath() + "'", ex);
@@ -177,6 +173,10 @@ public final class CloneAction {
                         progress + " " + L10N.t("plugin.photon.resourcemenu.rename.empty.name.error"),
                         L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE));
                 continue;
+            }
+            String typedExtension = parts.extension();
+            if (!typedExtension.isEmpty() && name.length() > typedExtension.length() && FileNameRules.hasExtension(name, typedExtension)) {
+                name = name.substring(0, name.length() - typedExtension.length());
             }
             if (FileNameRules.requiresStrictNaming(parts.extension())) {
                 name = nameResolver.resolve(mcreator, name, progress);

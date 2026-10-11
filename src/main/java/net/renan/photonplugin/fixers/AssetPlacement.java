@@ -73,6 +73,46 @@ public class AssetPlacement {
         }
     }
 
+    private static Path resolveConflict(Path targetDir, String fileName) {
+        String baseName = fileName;
+        String extension = "";
+
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex >= 0) {
+            baseName = fileName.substring(0, dotIndex);
+            extension = fileName.substring(dotIndex);
+        }
+
+        int counter = 1;
+        Path candidate;
+        do {
+            candidate = targetDir.resolve(baseName + "_" + counter + extension);
+            counter++;
+        } while (Files.exists(candidate));
+
+        return candidate;
+    }
+
+    private static boolean isWithin(Path path, Path root) {
+        return root != null && (path.equals(root) || path.startsWith(root));
+    }
+
+    private static void deleteRecursive(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return;
+        }
+
+        if (Files.isDirectory(path)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
+                for (Path child : stream) {
+                    deleteRecursive(child);
+                }
+            }
+        }
+
+        Files.deleteIfExists(path);
+    }
+
     private synchronized void start() {
         Log.info("Initializing AssetPlacement WatchService...");
 
@@ -258,30 +298,6 @@ public class AssetPlacement {
         }
     }
 
-    private static Path resolveConflict(Path targetDir, String fileName) {
-        String baseName = fileName;
-        String extension = "";
-
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex >= 0) {
-            baseName = fileName.substring(0, dotIndex);
-            extension = fileName.substring(dotIndex);
-        }
-
-        int counter = 1;
-        Path candidate;
-        do {
-            candidate = targetDir.resolve(baseName + "_" + counter + extension);
-            counter++;
-        } while (Files.exists(candidate));
-
-        return candidate;
-    }
-
-    private static boolean isWithin(Path path, Path root) {
-        return root != null && (path.equals(root) || path.startsWith(root));
-    }
-
     private void cleanupIllegalFxSubfolders() throws IOException {
         if (!Files.exists(fxDir)) {
             return;
@@ -331,21 +347,5 @@ public class AssetPlacement {
         } catch (IOException e) {
             Log.error("Failed to clean up illegal subfolder inside 'fx' directory: " + subfolder, e);
         }
-    }
-
-    private static void deleteRecursive(Path path) throws IOException {
-        if (!Files.exists(path)) {
-            return;
-        }
-
-        if (Files.isDirectory(path)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
-                for (Path child : stream) {
-                    deleteRecursive(child);
-                }
-            }
-        }
-
-        Files.deleteIfExists(path);
     }
 }

@@ -7,7 +7,9 @@ import net.mcreator.ui.modgui.ModElementGUI;
 import net.mcreator.workspace.elements.ModElement;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
+import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
 import net.renan.photonplugin.menus.resource.core.support.MenuLog;
+import net.renan.photonplugin.menus.resource.core.support.MenuTheme;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
 
 import javax.swing.*;
@@ -23,10 +25,6 @@ import java.util.Map;
 public final class FxUsagesDialog {
 
     private static final String FX_EXTENSION = ".fx";
-
-    private record UsagesHeaderRow(String text) {
-    }
-
     private static final Object NO_USAGES_ROW = new Object();
 
     private FxUsagesDialog() {
@@ -48,8 +46,9 @@ public final class FxUsagesDialog {
                 FileNameParts parts = FileNameParts.of(fxFile);
                 usagesMap.put(parts.baseName(), new ArrayList<>());
             }
-            FxUsageSearcher.searchInWorkspace(mcreator, usagesMap);
-            show(mcreator, usagesMap);
+            EdtSupport.runFileTaskInBackground(mcreator,
+                    () -> FxUsageSearcher.searchInWorkspace(mcreator, usagesMap),
+                    () -> show(mcreator, usagesMap));
         });
         return button;
     }
@@ -106,32 +105,10 @@ public final class FxUsagesDialog {
         dialog.setVisible(true);
     }
 
-    private static class ModElementResultRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            if (value == NO_USAGES_ROW) {
-                setText("    " + L10N.t("plugin.photon.resourcemenu.search.usages.no.usages"));
-                setFont(getFont().deriveFont(Font.ITALIC, 11f));
-                setIcon(null);
-                setForeground(isSelected ? Color.WHITE : Color.GRAY);
-                setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-            } else if (value instanceof UsagesHeaderRow header) {
-                setText(header.text());
-                setFont(getFont().deriveFont(Font.BOLD, 12f));
-                setIcon(null);
-                setForeground(isSelected ? Color.WHITE : new Color(210, 210, 210));
-                setBorder(BorderFactory.createEmptyBorder(8, 6, 3, 6));
-            } else if (value instanceof ModElement me) {
-                setText(me.getName());
-                setFont(getFont().deriveFont(Font.PLAIN, 12f));
-                setForeground(isSelected ? Color.WHITE : new Color(150, 210, 110));
-                setBorder(BorderFactory.createEmptyBorder(2, 22, 2, 6));
-                setIcon(resolveModElementIcon(me));
-            }
-            return this;
-        }
+    private record UsagesHeaderRow(String text) {
+    }
 
+    private static class ModElementResultRenderer extends DefaultListCellRenderer {
         private static Icon resolveModElementIcon(ModElement me) {
             try {
                 Icon icon = me.getType().getIcon();
@@ -143,6 +120,31 @@ public final class FxUsagesDialog {
             } catch (Exception ignored) {
             }
             return null;
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            if (value == NO_USAGES_ROW) {
+                setText("    " + L10N.t("plugin.photon.resourcemenu.search.usages.no.usages"));
+                setFont(getFont().deriveFont(Font.ITALIC, 11f));
+                setIcon(null);
+                setForeground(isSelected ? list.getSelectionForeground() : MenuTheme.foregroundColor(150));
+                setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+            } else if (value instanceof UsagesHeaderRow(String text)) {
+                setText(text);
+                setFont(getFont().deriveFont(Font.BOLD, 12f));
+                setIcon(null);
+                setForeground(isSelected ? list.getSelectionForeground() : MenuTheme.foregroundColor());
+                setBorder(BorderFactory.createEmptyBorder(8, 6, 3, 6));
+            } else if (value instanceof ModElement me) {
+                setText(me.getName());
+                setFont(getFont().deriveFont(Font.PLAIN, 12f));
+                setForeground(isSelected ? list.getSelectionForeground() : MenuTheme.accentColor());
+                setBorder(BorderFactory.createEmptyBorder(2, 22, 2, 6));
+                setIcon(resolveModElementIcon(me));
+            }
+            return this;
         }
     }
 }

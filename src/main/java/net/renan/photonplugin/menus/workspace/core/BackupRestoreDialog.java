@@ -27,12 +27,14 @@ public final class BackupRestoreDialog {
         }
 
         JDialog dialog = new JDialog(owner, L10N.t("plugin.photon.workspacemenu.backup.restore"),
-                Dialog.ModalityType.APPLICATION_MODAL);
+                Dialog.ModalityType.DOCUMENT_MODAL);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         DialogUtils.closeOnEscape(dialog);
 
-        JButton restoreButton = new JButton(L10N.t("plugin.photon.workspacemenu.backup.restore.confirm"));
-        JButton cancelButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
+        JButton restoreButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.backup.restore.confirm"),
+                PhotonTheme.ButtonVariant.PRIMARY);
+        JButton cancelButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
         restoreButton.setEnabled(false);
         picker.onSelectionChange(() -> restoreButton.setEnabled(picker.getSingleSelectedFile() != null));
 
@@ -43,7 +45,7 @@ public final class BackupRestoreDialog {
         picker.onDoubleClick(selected -> confirmAndRestore(dialog, backup, selected, restoreButton, cancelButton));
 
         JPanel content = new JPanel(new BorderLayout(10, 10));
-        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         content.add(picker.getComponent(), BorderLayout.CENTER);
         content.add(DialogUtils.bottomButtonRow(cancelButton, restoreButton), BorderLayout.SOUTH);
 
@@ -70,7 +72,7 @@ public final class BackupRestoreDialog {
             return;
         }
 
-        SwingWorkers.runInBackground(dialog, new JButton[] { restoreButton, cancelButton },
+        SwingWorkers.runInBackground(dialog, new JButton[]{restoreButton, cancelButton},
                 () -> {
                     backup.restoreBackup(selected);
                     return selected;

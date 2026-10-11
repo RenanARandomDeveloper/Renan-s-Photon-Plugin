@@ -6,13 +6,29 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 
 public final class DialogUtils {
+
+    private static final String ESCAPE_CLOSE_ENABLED_PROPERTY = "photon.escapeCloseEnabled";
+
     private DialogUtils() {
     }
 
     public static void closeOnEscape(JDialog dialog) {
         KeyStroke escapeKey = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
-        dialog.getRootPane().registerKeyboardAction(e -> dialog.dispose(), escapeKey,
-                JComponent.WHEN_IN_FOCUSED_WINDOW);
+        dialog.getRootPane().putClientProperty(ESCAPE_CLOSE_ENABLED_PROPERTY, Boolean.TRUE);
+        dialog.getRootPane().registerKeyboardAction(e -> {
+            if (isEscapeCloseEnabled(dialog)) {
+                dialog.dispose();
+            }
+        }, escapeKey, JComponent.WHEN_IN_FOCUSED_WINDOW);
+    }
+
+    public static void setEscapeCloseEnabled(JDialog dialog, boolean enabled) {
+        dialog.getRootPane().putClientProperty(ESCAPE_CLOSE_ENABLED_PROPERTY, enabled);
+    }
+
+    private static boolean isEscapeCloseEnabled(JDialog dialog) {
+        Object value = dialog.getRootPane().getClientProperty(ESCAPE_CLOSE_ENABLED_PROPERTY);
+        return !(value instanceof Boolean) || (Boolean) value;
     }
 
     public static void setDefaultButton(JDialog dialog, JButton button) {
@@ -35,9 +51,9 @@ public final class DialogUtils {
     }
 
     public static void configureListMouseSelection(JList<?> list, Runnable onEmptyAreaClick) {
-        int[] anchor = { -1 };
-        boolean[] dragging = { false };
-        boolean[] dragOccurred = { false };
+        int[] anchor = {-1};
+        boolean[] dragging = {false};
+        boolean[] dragOccurred = {false};
 
         list.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -107,6 +123,9 @@ public final class DialogUtils {
 
     public static void enableWheelSelectionNavigation(JList<?> list) {
         list.addMouseWheelListener(e -> {
+            if (!e.isAltDown()) {
+                return;
+            }
             int[] selected = list.getSelectedIndices();
             if (selected.length != 1) {
                 return;
@@ -150,6 +169,7 @@ public final class DialogUtils {
 
     public static JPanel bottomButtonRow(JButton... buttons) {
         JPanel row = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        row.setOpaque(false);
         for (JButton button : buttons) {
             row.add(button);
         }
@@ -167,10 +187,10 @@ public final class DialogUtils {
 
         JLabel captionLabel = new JLabel(caption);
         captionLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        captionLabel.setForeground(Color.GRAY);
+        captionLabel.setForeground(PhotonTheme.mutedForeground());
         captionLabel.setFont(captionLabel.getFont().deriveFont(Font.PLAIN, Math.max(10f,
                 captionLabel.getFont().getSize() - 2f)));
-        captionLabel.setBorder(BorderFactory.createEmptyBorder(2, 6, 0, 0));
+        captionLabel.setBorder(BorderFactory.createEmptyBorder(4, 3, 0, 0));
 
         wrapper.add(button);
         wrapper.add(captionLabel);
@@ -179,16 +199,12 @@ public final class DialogUtils {
 
     public static JLabel mutedCaption() {
         JLabel label = new JLabel();
-        label.setForeground(Color.GRAY);
+        label.setForeground(PhotonTheme.mutedForeground());
         label.setFont(label.getFont().deriveFont(Math.max(10f, label.getFont().getSize() - 1f)));
         return label;
     }
 
     public static JLabel sectionTitle(String text) {
-        JLabel label = new JLabel(text);
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, label.getFont().getSize() + 1f));
-        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
-        return label;
+        return PhotonTheme.heading(text);
     }
 }

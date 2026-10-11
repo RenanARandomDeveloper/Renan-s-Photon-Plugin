@@ -9,6 +9,7 @@ import net.renan.photonplugin.menus.resource.core.support.MenuMessages;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
 
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
@@ -21,11 +22,6 @@ public final class DeleteAction {
     private DeleteAction() {
     }
 
-    private enum FolderDeleteAction {DELETE_EMPTY, MOVE_CONTENTS, DELETE_ALL}
-
-    private record FolderDeleteDecision(File folder, FolderDeleteAction action, File[] contents) {
-    }
-
     public static JButton buildDeleteButtonForBrowser(MCreator mcreator, FXBrowserPanel browser) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.delete.files"), "16px_photon.delete");
         btn.addActionListener(e -> performDeleteSelected(mcreator, browser));
@@ -34,7 +30,9 @@ public final class DeleteAction {
     }
 
     public static void bindDeleteKey(MCreator mcreator, FXBrowserPanel browser, Runnable action) {
-        browser.getGrid().getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "photon.deleteSelected");
+        InputMap inputMap = browser.getGrid().getInputMap(JComponent.WHEN_FOCUSED);
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "photon.deleteSelected");
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "photon.deleteSelected");
         browser.getGrid().getActionMap().put("photon.deleteSelected", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -75,7 +73,7 @@ public final class DeleteAction {
         for (int fi = 0; fi < folderTargets.size() && !cancelAll; fi++) {
             File folder = folderTargets.get(fi);
             if (!folder.isDirectory()) continue;
-            File[] contents = folder.listFiles();
+            File[] contents = FileOps.listWithoutSystemJunk(folder);
             int contentCount = (contents != null) ? contents.length : 0;
 
             if (contentCount == 0) {
@@ -133,19 +131,23 @@ public final class DeleteAction {
         final boolean doDeleteFiles = deleteConfirmedFiles;
         final boolean wasCancelled = cancelAll;
         int[] counts = new int[2];
+        List<String> failedNames = new java.util.concurrent.CopyOnWriteArrayList<>();
 
         browser.beginInternalMutation();
         EdtSupport.runFileTaskInBackground(mcreator, () -> {
             if (doDeleteFiles) {
                 for (File f : fileTargets) {
                     if (f.delete()) counts[0]++;
+                    else failedNames.add(f.getName());
                 }
             }
             for (FolderDeleteDecision decision : decisions) {
                 File folder = decision.folder();
                 switch (decision.action()) {
                     case DELETE_EMPTY -> {
+                        FileOps.deleteSystemJunk(folder);
                         if (folder.delete()) counts[1]++;
+                        else failedNames.add(browser.getFolderName(folder));
                     }
                     case MOVE_CONTENTS -> {
                         File parent = folder.getParentFile();
@@ -164,8 +166,9 @@ public final class DeleteAction {
                                     L10N.t("plugin.photon.resourcemenu.delete.move.contents.partial.fail", finalFailed, browser.getFolderName(folder)),
                                     L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.WARNING_MESSAGE));
                         }
-                        File[] remaining = folder.listFiles();
+                        File[] remaining = FileOps.listWithoutSystemJunk(folder);
                         if (remaining == null || remaining.length == 0) {
+                            FileOps.deleteSystemJunk(folder);
                             if (folder.delete()) counts[1]++;
                         }
                     }
@@ -185,7 +188,11 @@ public final class DeleteAction {
             try {
                 if (counts[0] + counts[1] > 0) {
                     browser.refresh();
-                    JOptionPane.showMessageDialog(mcreator, MenuMessages.buildItemLabel(counts[0], counts[1]) + " " + L10N.t("plugin.photon.resourcemenu.action.deleted"));
+                    JOptionPane.showMessageDialog(mcreator, MenuMessages.buildItemLabel(counts[0], counts[1]) + " " + L10N.t("plugin.photon.resourcemenu.action.deleted")
+                            + MenuMessages.buildFailureSummary(failedNames));
+                } else if (!failedNames.isEmpty()) {
+                    JOptionPane.showMessageDialog(mcreator, MenuMessages.buildFailureSummary(failedNames).trim(),
+                            L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
                 } else if (!wasCancelled) {
                     JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                 }
@@ -193,5 +200,10 @@ public final class DeleteAction {
                 browser.endInternalMutation();
             }
         });
+    }
+
+    private enum FolderDeleteAction {DELETE_EMPTY, MOVE_CONTENTS, DELETE_ALL}
+
+    private record FolderDeleteDecision(File folder, FolderDeleteAction action, File[] contents) {
     }
 }

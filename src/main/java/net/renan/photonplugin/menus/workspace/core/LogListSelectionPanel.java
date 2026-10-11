@@ -31,7 +31,10 @@ public final class LogListSelectionPanel {
 
         logList = new JList<>(listModel);
         logList.setSelectionMode(selectionMode);
-        logList.setBorder(BorderFactory.createEmptyBorder(2, 4, 6, 4));
+        logList.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+        logList.setBackground(PhotonTheme.listBackground());
+        logList.setSelectionBackground(PhotonTheme.accent());
+        logList.setSelectionForeground(Color.WHITE);
         logList.setDragEnabled(false);
         DialogUtils.configureListMouseSelection(logList, logList::clearSelection);
         DialogUtils.enableWheelSelectionNavigation(logList);
@@ -43,20 +46,50 @@ public final class LogListSelectionPanel {
                                                           boolean isSelected, boolean cellHasFocus) {
                 JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected,
                         cellHasFocus);
+                label.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+                label.setOpaque(true);
+                if (!isSelected) {
+                    label.setBackground(index % 2 == 0 ? PhotonTheme.listBackground() : PhotonTheme.zebraStripe());
+                    label.setForeground(PhotonTheme.textForeground());
+                }
                 if (value instanceof File file) {
-                    boolean isActive = activeLogFile != null && file.equals(activeLogFile);
-                    String activeSuffix = isActive ? " " + L10N.t("plugin.photon.workspacemenu.log.export.active")
-                            : "";
-                    String createdAt = Log.getLogCreationDate(file).format(DATE_FORMAT);
-                    label.setText(file.getName() + " (" + createdAt + ")" + activeSuffix);
+                    boolean isActive = file.equals(activeLogFile);
+                    String createdAt;
+                    try {
+                        createdAt = Log.getLogCreationDate(file).format(DATE_FORMAT);
+                    } catch (Exception ex) {
+                        createdAt = "--";
+                    }
+                    String rowText = escapeHtml(file.getName()) + " (" + escapeHtml(createdAt) + ")";
+                    if (isActive) {
+                        String badgeColor = String.format("#%06X", PhotonTheme.badgeForeground().getRGB() & 0xFFFFFF);
+                        rowText += "&nbsp;&nbsp;<font color='" + badgeColor + "'><b>"
+                                + escapeHtml(L10N.t("plugin.photon.workspacemenu.log.export.active")) + "</b></font>";
+                    }
+                    label.setText("<html>" + rowText + "</html>");
                 }
                 return label;
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                if (isOpaque()) {
+                    PhotonTheme.paintRoundedCellBackground(g, this, getBackground());
+                    setOpaque(false);
+                    super.paintComponent(g);
+                    setOpaque(true);
+                } else {
+                    super.paintComponent(g);
+                }
             }
         });
 
         JScrollPane scrollPane = new JScrollPane(logList);
+        scrollPane.setBorder(PhotonTheme.roundedLineBorder(PhotonTheme.cardBorder(), 1,
+                PhotonTheme.LIST_CONTAINER_ARC));
 
         JPanel wrapper = new JPanel(new BorderLayout(0, 8));
+        wrapper.setOpaque(false);
         if (selectionMode != ListSelectionModel.SINGLE_SELECTION) {
             wrapper.add(buildSelectAllNoneRow(), BorderLayout.NORTH);
             DialogUtils.bindShortcut(wrapper,
@@ -73,6 +106,13 @@ public final class LogListSelectionPanel {
 
     public static LogListSelectionPanel singleSelect(List<File> logs, File activeLogFile) {
         return new LogListSelectionPanel(logs, activeLogFile, ListSelectionModel.SINGLE_SELECTION);
+    }
+
+    private static String escapeHtml(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     public JComponent getComponent() {
@@ -114,13 +154,16 @@ public final class LogListSelectionPanel {
     }
 
     private JPanel buildSelectAllNoneRow() {
-        JButton selectAllButton = new JButton(L10N.t("plugin.photon.workspacemenu.list.select_all"));
-        JButton selectNoneButton = new JButton(L10N.t("plugin.photon.workspacemenu.list.select_none"));
+        JButton selectAllButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.list.select_all"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton selectNoneButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.list.select_none"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
 
         selectAllButton.addActionListener(e -> selectAll());
         selectNoneButton.addActionListener(e -> selectNone());
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        row.setOpaque(false);
         row.add(selectAllButton);
         row.add(selectNoneButton);
         return row;

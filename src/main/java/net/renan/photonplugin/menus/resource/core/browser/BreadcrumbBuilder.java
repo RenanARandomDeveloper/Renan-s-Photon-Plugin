@@ -11,11 +11,8 @@ public final class BreadcrumbBuilder {
     private BreadcrumbBuilder() {
     }
 
-    public record Segment(File dir, String label) {
-    }
-
     public static List<Segment> buildSegments(File currentDir, List<File> roots, int rootSupplierCount,
-                                               Function<File, String> folderNameResolver) {
+                                              Function<File, String> folderNameResolver) {
         List<Segment> segments = new ArrayList<>();
         if (currentDir == null) {
             segments.add(new Segment(null, "/"));
@@ -45,5 +42,8 @@ public final class BreadcrumbBuilder {
         }
         segments.add(new Segment(currentDir, folderNameResolver.apply(currentDir)));
         return segments;
+    }
+
+    public record Segment(File dir, String label) {
     }
 }

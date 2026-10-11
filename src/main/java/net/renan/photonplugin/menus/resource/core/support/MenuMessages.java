@@ -14,6 +14,37 @@ public final class MenuMessages {
     private MenuMessages() {
     }
 
+    public static String tOr(String key, String fallback, Object... args) {
+        String value;
+        try {
+            value = L10N.t(key, args);
+        } catch (RuntimeException ex) {
+            value = null;
+        }
+        if (value == null || value.isBlank() || value.equals(key) || value.equals("!" + key + "!")) {
+            return args == null || args.length == 0 ? fallback : java.text.MessageFormat.format(fallback, args);
+        }
+        return value;
+    }
+
+    private static String andMore() {
+        return "\n  " + tOr("plugin.photon.resourcemenu.and.more", "... and more");
+    }
+
+    public static String buildFailureSummary(List<String> failedNames) {
+        if (failedNames == null || failedNames.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("\n\n").append(tOr("plugin.photon.resourcemenu.operation.failed.items",
+                "{0} item(s) could not be processed:", failedNames.size()));
+        int shown = Math.min(failedNames.size(), 10);
+        for (int i = 0; i < shown; i++) {
+            sb.append("\n    ").append(failedNames.get(i));
+        }
+        if (failedNames.size() > shown) {
+            sb.append(andMore());
+        }
+        return sb.toString();
+    }
+
     public static String buildItemLabel(int fileCount, int folderCount) {
         if (fileCount == 0 && folderCount == 0) return "0";
         StringBuilder sb = new StringBuilder();
@@ -44,7 +75,7 @@ public final class MenuMessages {
                 msgBuilder.append("\n    ").append(fileTargets.get(j).getName());
             }
             if (fileTargets.size() > shown) {
-                msgBuilder.append("\n  ... and more");
+                msgBuilder.append(andMore());
             }
         }
         if (!folderTargets.isEmpty()) {
@@ -54,7 +85,7 @@ public final class MenuMessages {
                 msgBuilder.append("\n    \uD83D\uDCC2 ").append(browser.getFolderName(folderTargets.get(j))).append("/");
             }
             if (folderTargets.size() > shownFolders) {
-                msgBuilder.append("\n  ... and more");
+                msgBuilder.append(andMore());
             }
         }
         return msgBuilder.toString();
@@ -78,7 +109,7 @@ public final class MenuMessages {
             }
         }
         if (sorted.size() > shown) {
-            folderMsg.append("\n  ... and more");
+            folderMsg.append(andMore());
         }
         return folderMsg.toString();
     }

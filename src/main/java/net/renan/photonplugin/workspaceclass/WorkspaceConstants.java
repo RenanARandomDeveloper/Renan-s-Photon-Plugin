@@ -4,10 +4,7 @@ import java.util.List;
 
 public final class WorkspaceConstants {
 
-    private WorkspaceConstants() {}
-
     public static final String TARGET_SUB_PACKAGE = "photon_plugin";
-
     private static final List<String> BASE_CLASS_NAMES = List.of(
             "ClientEffectScheduler", "ServerEffectScheduler",
             "SummonFXEntityServer", "SummonFXBlockServer",
@@ -20,6 +17,9 @@ public final class WorkspaceConstants {
             "ModifyEntityEffectPacket", "ModifyBlockEffectPacket",
             "PhotonPluginNetworking"
     );
+
+    private WorkspaceConstants() {
+    }
 
     public static List<String> getBaseClassNames() {
         return BASE_CLASS_NAMES;

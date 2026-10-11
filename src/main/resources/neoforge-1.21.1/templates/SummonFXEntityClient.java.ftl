@@ -22,6 +22,11 @@ public final class SummonFXEntityClient {
     private SummonFXEntityClient() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static EffectBuilder create(Entity entity) {
         return new EffectBuilder(entity != null ? List.of(entity) : null);
     }
@@ -135,7 +140,11 @@ public final class SummonFXEntityClient {
 
         static void dispatch(List<Entity> entities, String effectName, Vec3 offset, Vec3 rotation, Vec3 scale,
                              int delay, boolean forcedDeath, boolean allowMulti, AutoRotate autoRotateMode) {
-            ResourceLocation location = ResourceLocation.fromNamespaceAndPath("photon", effectName);
+            ResourceLocation location = resolveEffectLocation(effectName);
+            if (location == null) {
+                LOGGER.warn("[SummonFXEntityClient] Invalid effect name '{}' could not be parsed into a ResourceLocation.", effectName);
+                return;
+            }
 
             Minecraft.getInstance().execute(() -> {
                 try {

@@ -67,7 +67,12 @@ public final class BackupOperations {
         if (zipped == null) {
             return targetDir;
         }
-        FileTreeUtils.deleteRecursively(targetDir.toPath());
+        try {
+            FileTreeUtils.deleteRecursively(targetDir.toPath());
+        } catch (IOException e) {
+            Log.warn("Backup zip created at %s, but failed to remove the temporary folder %s: %s",
+                    zipped.getAbsolutePath(), targetDir.getAbsolutePath(), e.getMessage());
+        }
         return zipped;
     }
 
@@ -168,6 +173,9 @@ public final class BackupOperations {
                     ZipUtils.appendZipEntries(zos, selected, baseName);
                 }
             }
+        } catch (IOException e) {
+            destination.delete();
+            throw e;
         }
     }
 

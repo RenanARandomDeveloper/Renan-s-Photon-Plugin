@@ -1,6 +1,5 @@
 package net.renan.photonplugin.menus.resource.common.fx.actions;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualBrowserSupport;
@@ -8,6 +7,8 @@ import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserP
 import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.fs.FileOps;
+import net.renan.photonplugin.menus.resource.core.support.DirectoryDialogs;
 import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
 
@@ -21,8 +22,6 @@ import java.util.Map;
 import static net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver.checkOverwrite;
 import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_CANCEL;
 import static net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution.ACTION_SKIP;
-import static net.renan.photonplugin.menus.resource.core.fs.FileOps.deleteRecursively;
-import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.onEdtVoid;
 import static net.renan.photonplugin.menus.resource.core.support.EdtSupport.runFileTaskInBackground;
 import static net.renan.photonplugin.menus.resource.core.support.MenuMessages.buildItemLabel;
 
@@ -42,14 +41,12 @@ public final class VirtualExportAction {
                 return;
             }
 
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            if (chooser.showSaveDialog(mcreator) != JFileChooser.APPROVE_OPTION) {
+            File dest = DirectoryDialogs.chooseDirectory(mcreator);
+            if (dest == null) {
                 JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                 return;
             }
 
-            File dest = chooser.getSelectedFile();
             int folderConflicts = 0;
             for (File folder : folderTargets) {
                 if (new File(dest, browser.getFolderName(folder)).exists()) folderConflicts++;
@@ -80,8 +77,7 @@ public final class VirtualExportAction {
                         }
                         if (resolution.action() == ACTION_SKIP) continue;
                         destFile = resolution.targetFile();
-                        if (destFile.exists()) destFile.delete();
-                        FileIO.copyFile(f, destFile);
+                        FileOps.copyReplacing(f, destFile);
                         counts[0]++;
                     }
 
@@ -97,15 +93,13 @@ public final class VirtualExportAction {
                             }
                             if (resolution.action() == ACTION_SKIP) continue;
                             destFolder = resolution.targetFile();
-                            if (destFolder.exists()) deleteRecursively(destFolder);
                         }
-                        if (!destFolder.exists() && !destFolder.mkdirs()) {
-                            onEdtVoid(() -> JOptionPane.showMessageDialog(mcreator,
-                                    L10N.t("plugin.photon.resourcemenu.export.failed") + folderName,
-                                    L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE));
-                            continue;
+                        File targetFolder = destFolder;
+                        Map<String, List<File>> subtree = folderSubtrees.get(folder);
+                        if (containsSources(targetFolder, subtree)) {
+                            throw new IOException("Destination folder contains files being exported: " + folderName);
                         }
-                        exportSubtree(destFolder, folderSubtrees.get(folder));
+                        FileOps.replaceDirectory(targetFolder, () -> exportSubtree(targetFolder, subtree));
                         counts[1]++;
                     }
                 } catch (Exception ex) {
@@ -140,8 +134,17 @@ public final class VirtualExportAction {
                 throw new IOException("Cannot create directory: " + targetDir.getAbsolutePath());
             }
             for (File f : branch.getValue()) {
-                FileIO.copyFile(f, new File(targetDir, f.getName()));
+                FileOps.copyReplacing(f, new File(targetDir, f.getName()));
             }
         }
+    }
+
+    private static boolean containsSources(File destFolder, Map<String, List<File>> subtree) {
+        for (List<File> files : subtree.values()) {
+            for (File f : files) {
+                if (FileOps.isInside(f, destFolder)) return true;
+            }
+        }
+        return false;
     }
 }

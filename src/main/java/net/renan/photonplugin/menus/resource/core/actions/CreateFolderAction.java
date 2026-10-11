@@ -36,14 +36,12 @@ public final class CreateFolderAction {
                 }
                 String folderName = JOptionPane.showInputDialog(mcreator, L10N.t("plugin.photon.resourcemenu.folder.name"));
                 if (folderName == null || folderName.trim().isEmpty()) {
-                    JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                     return;
                 }
                 folderName = folderName.trim();
 
                 folderName = new InvalidNameResolver(1).resolve(mcreator, folderName, false);
                 if (folderName == null) {
-                    JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                     return;
                 }
                 File newFolder = new File(targetDir, folderName);

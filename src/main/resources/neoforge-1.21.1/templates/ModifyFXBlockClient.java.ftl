@@ -21,6 +21,11 @@ public final class ModifyFXBlockClient {
     private ModifyFXBlockClient() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static ModifyBuilder modify(BlockPos pos) {
         return new ModifyBuilder(pos != null ? List.of(pos) : null);
     }
@@ -98,7 +103,7 @@ public final class ModifyFXBlockClient {
 
                 ResourceLocation targetLocation = null;
                 if (this.effectName != null && !this.effectName.isEmpty()) {
-                    targetLocation = ResourceLocation.tryParse("photon:" + this.effectName);
+                    targetLocation = resolveEffectLocation(this.effectName);
                     if (targetLocation == null) {
                         LOGGER.warn("[ModifyFXBlockClient] Invalid effect name '{}' could not be parsed into a ResourceLocation.", this.effectName);
                         return 0;

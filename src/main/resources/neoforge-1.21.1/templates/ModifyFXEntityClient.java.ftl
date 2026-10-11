@@ -21,6 +21,11 @@ public final class ModifyFXEntityClient {
     private ModifyFXEntityClient() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static ModifyBuilder modify(Entity entity) {
         return new ModifyBuilder(entity != null ? List.of(entity) : null);
     }
@@ -94,7 +99,7 @@ public final class ModifyFXEntityClient {
 
                 ResourceLocation targetLocation = null;
                 if (this.effectName != null && !this.effectName.isEmpty()) {
-                    targetLocation = ResourceLocation.tryParse("photon:" + this.effectName);
+                    targetLocation = resolveEffectLocation(this.effectName);
                     if (targetLocation == null) {
                         LOGGER.warn("[ModifyFXEntityClient] Invalid effect name '{}' could not be parsed into a ResourceLocation.", this.effectName);
                         return 0;

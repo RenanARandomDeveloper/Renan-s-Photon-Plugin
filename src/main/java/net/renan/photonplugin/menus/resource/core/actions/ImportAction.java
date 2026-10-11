@@ -1,12 +1,12 @@
 package net.renan.photonplugin.menus.resource.core.actions;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.dialogs.file.FileDialogs;
 import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameRules;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
@@ -28,25 +28,25 @@ public final class ImportAction {
     }
 
     public static JButton buildImportButton(MCreator mcreator, FXBrowserPanel browser, Supplier<File> targetDirGetter,
-                                             String extension) {
+                                            String extension) {
         return buildImportButton(mcreator, browser, targetDirGetter, extension,
                 "plugin.photon.resourcemenu.import", "16px_photon.import", null);
     }
 
     public static JButton buildImportButton(MCreator mcreator, FXBrowserPanel browser, Supplier<File> targetDirGetter,
-                                             String extension, BiConsumer<File, List<File>> onImported) {
+                                            String extension, BiConsumer<File, List<File>> onImported) {
         return buildImportButton(mcreator, browser, targetDirGetter, extension,
                 "plugin.photon.resourcemenu.import", "16px_photon.import", onImported);
     }
 
     public static JButton buildImportButton(MCreator mcreator, FXBrowserPanel browser, Supplier<File> targetDirGetter,
-                                             String extension, String menuKey, String iconKey) {
+                                            String extension, String menuKey, String iconKey) {
         return buildImportButton(mcreator, browser, targetDirGetter, extension, menuKey, iconKey, null);
     }
 
     public static JButton buildImportButton(MCreator mcreator, FXBrowserPanel browser, Supplier<File> targetDirGetter,
-                                             String extension, String menuKey, String iconKey,
-                                             BiConsumer<File, List<File>> onImported) {
+                                            String extension, String menuKey, String iconKey,
+                                            BiConsumer<File, List<File>> onImported) {
         JButton button = MenuToolbars.createToolbarButton(L10N.t(menuKey), iconKey);
         button.addActionListener(e -> {
             File[] sourceFiles = FileDialogs.getMultiOpenDialog(mcreator, new String[]{extension});
@@ -93,7 +93,7 @@ public final class ImportAction {
                         if (resolution.action() == ConflictResolution.ACTION_CANCEL) break;
                         if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
                         destFile = resolution.targetFile();
-                        FileIO.copyFile(source, destFile);
+                        FileOps.copyReplacing(source, destFile);
                         importedFiles.add(destFile);
                     }
                 } catch (Exception ex) {
@@ -101,14 +101,16 @@ public final class ImportAction {
                 }
             }, () -> {
                 try {
+                    if (!importedFiles.isEmpty()) {
+                        if (onImported != null) onImported.accept(finalTargetDir, importedFiles);
+                        browser.refresh();
+                    }
                     if (failure[0] != null) {
                         MenuLog.error("Failed to import files into '" + finalTargetDir.getAbsolutePath() + "'", failure[0]);
                         JOptionPane.showMessageDialog(mcreator,
                                 L10N.t("plugin.photon.resourcemenu.import.failed") + failure[0].getMessage(),
                                 L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
                     } else if (!importedFiles.isEmpty()) {
-                        if (onImported != null) onImported.accept(finalTargetDir, importedFiles);
-                        browser.refresh();
                         JOptionPane.showMessageDialog(mcreator, MenuMessages.buildItemLabel(importedFiles.size(), 0) + " " + L10N.t("plugin.photon.resourcemenu.action.imported")
                                 + " \u2192 \"" + finalTargetDir.getName() + "\"" + BulkConflictResolver.autoRenameNotice(overwriteResolver));
                     } else {

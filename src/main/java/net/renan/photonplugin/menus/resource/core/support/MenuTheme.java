@@ -55,6 +55,19 @@ public final class MenuTheme {
         return new Color(210, 210, 210);
     }
 
+    public static Color foregroundColor(int alpha) {
+        Color c = foregroundColor();
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha);
+    }
+
+    public static Color blend(Color base, Color overlay, float amount) {
+        float t = Math.max(0f, Math.min(1f, amount));
+        return new Color(
+                clampChannel(Math.round(base.getRed() + (overlay.getRed() - base.getRed()) * t)),
+                clampChannel(Math.round(base.getGreen() + (overlay.getGreen() - base.getGreen()) * t)),
+                clampChannel(Math.round(base.getBlue() + (overlay.getBlue() - base.getBlue()) * t)));
+    }
+
     public static int clampChannel(int v) {
         return Math.max(0, Math.min(255, v));
     }

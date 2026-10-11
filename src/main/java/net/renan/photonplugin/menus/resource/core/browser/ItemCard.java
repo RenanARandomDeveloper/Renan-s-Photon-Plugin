@@ -18,22 +18,9 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 public abstract class ItemCard extends JPanel {
-    private static Color bgHoverColor() {
-        return new Color(100, 100, 100, 210);
-    }
-
-    private static Color bgSelectedColor() {
-        return MenuTheme.accentColor(120);
-    }
-
-    private static Color bdSelectedColor() {
-        return MenuTheme.accentColor();
-    }
-
     protected static final int ICON_PAD = 12;
     protected static final int TEXT_GAP = 10;
     protected static final int MAX_DISPLAY_NAME_CHARS = 15;
-
     protected final File file;
     protected final int iconSize;
     protected boolean hovered = false;
@@ -49,56 +36,16 @@ public abstract class ItemCard extends JPanel {
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     }
 
-    public File getFile() {
-        return file;
+    private static Color bgHoverColor() {
+        return MenuTheme.foregroundColor(50);
     }
 
-    public void setSelected(boolean v) {
-        if (selected != v) {
-            selected = v;
-            repaint();
-        }
+    private static Color bgSelectedColor() {
+        return MenuTheme.accentColor(120);
     }
 
-    protected abstract void paintContent(Graphics2D g2, int w, int h);
-
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g.create();
-        try {
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
-            int w = getWidth(), h = getHeight();
-            if (dropHighlight) {
-                g2.setColor(new Color(60, 120, 200, 160));
-                g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
-                g2.setColor(new Color(100, 170, 240));
-                g2.setStroke(new BasicStroke(2.0f));
-                g2.drawRoundRect(2, 2, w - 4, h - 4, 8, 8);
-            } else if (selected) {
-                g2.setColor(bgSelectedColor());
-                g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
-                g2.setColor(bdSelectedColor());
-                g2.setStroke(new BasicStroke(1.5f));
-                g2.drawRoundRect(2, 2, w - 4, h - 4, 8, 8);
-            } else if (hovered) {
-                g2.setColor(bgHoverColor());
-                g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
-            }
-            paintContent(g2, w, h);
-        } finally {
-            g2.dispose();
-        }
-    }
-
-    protected void drawIcon(Graphics2D g2, Icon icon, int h) {
-        if (icon == null) return;
-        icon.paintIcon(this, g2, ICON_PAD, (h - iconSize) / 2);
-    }
-
-    protected int textX() {
-        return ICON_PAD + iconSize + TEXT_GAP;
+    private static Color bdSelectedColor() {
+        return MenuTheme.accentColor();
     }
 
     protected static Font cardFont(int style, float size) {
@@ -124,6 +71,58 @@ public abstract class ItemCard extends JPanel {
         if (s.length() <= maxChars) return s;
 
         return s.substring(0, maxChars) + "...";
+    }
+
+    public File getFile() {
+        return file;
+    }
+
+    public void setSelected(boolean v) {
+        if (selected != v) {
+            selected = v;
+            repaint();
+        }
+    }
+
+    protected abstract void paintContent(Graphics2D g2, int w, int h);
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D) g.create();
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+            int w = getWidth(), h = getHeight();
+            if (dropHighlight) {
+                g2.setColor(MenuTheme.accentColor(110));
+                g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
+                g2.setColor(MenuTheme.accentColor());
+                g2.setStroke(new BasicStroke(2.0f));
+                g2.drawRoundRect(2, 2, w - 4, h - 4, 8, 8);
+            } else if (selected) {
+                g2.setColor(bgSelectedColor());
+                g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
+                g2.setColor(bdSelectedColor());
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.drawRoundRect(2, 2, w - 4, h - 4, 8, 8);
+            } else if (hovered) {
+                g2.setColor(bgHoverColor());
+                g2.fillRoundRect(2, 2, w - 4, h - 4, 8, 8);
+            }
+            paintContent(g2, w, h);
+        } finally {
+            g2.dispose();
+        }
+    }
+
+    protected void drawIcon(Graphics2D g2, Icon icon, int h) {
+        if (icon == null) return;
+        icon.paintIcon(this, g2, ICON_PAD, (h - iconSize) / 2);
+    }
+
+    protected int textX() {
+        return ICON_PAD + iconSize + TEXT_GAP;
     }
 
     protected final void paintIconAndLabel(Graphics2D g2, int w, int h, Icon icon, String name, int fontStyle) {
@@ -164,7 +163,7 @@ public abstract class ItemCard extends JPanel {
     }
 
     protected final void installDragSource(FXBrowserPanel browser, BooleanSupplier alreadySelected,
-                                            Supplier<List<File>> selectedItemsSupplier, Runnable selectThisItem) {
+                                           Supplier<List<File>> selectedItemsSupplier, Runnable selectThisItem) {
         DragSource.getDefaultDragSource().createDefaultDragGestureRecognizer(
                 this, DnDConstants.ACTION_MOVE, (DragGestureEvent dge) -> {
                     if (!browser.isDragAndDropEnabled()) return;

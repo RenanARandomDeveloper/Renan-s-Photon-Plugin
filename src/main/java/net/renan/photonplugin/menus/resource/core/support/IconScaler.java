@@ -3,14 +3,31 @@ package net.renan.photonplugin.menus.resource.core.support;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 public final class IconScaler {
+
+    private static final Map<Icon, Map<Integer, Icon>> CACHE = Collections.synchronizedMap(new WeakHashMap<>());
 
     private IconScaler() {
     }
 
     public static Icon scaleIconTo(Icon source, int targetPx) {
         if (source == null) return null;
+        Map<Integer, Icon> bySize = CACHE.computeIfAbsent(source, key -> new HashMap<>());
+        synchronized (bySize) {
+            Icon cached = bySize.get(targetPx);
+            if (cached != null) return cached;
+            Icon scaled = renderScaled(source, targetPx);
+            if (scaled != null) bySize.put(targetPx, scaled);
+            return scaled;
+        }
+    }
+
+    private static Icon renderScaled(Icon source, int targetPx) {
         int sw = source.getIconWidth(), sh = source.getIconHeight();
         if (sw <= 0 || sh <= 0) return null;
 

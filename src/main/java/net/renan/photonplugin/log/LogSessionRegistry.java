@@ -5,6 +5,8 @@ import net.mcreator.ui.MCreator;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -14,6 +16,21 @@ final class LogSessionRegistry {
     private static final Map<String, LogSession> SESSIONS = new ConcurrentHashMap<>();
     private static final ThreadLocal<LogSession> CURRENT = new ThreadLocal<>();
     private static final LogSession UNBOUND = new LogSession();
+
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            for (LogSession session : SESSIONS.values()) {
+                try {
+                    session.closeWriter();
+                } catch (Exception ignored) {
+                }
+            }
+            try {
+                UNBOUND.closeWriter();
+            } catch (Exception ignored) {
+            }
+        }, "Photon-Log-Shutdown"));
+    }
 
     private LogSessionRegistry() {
     }
@@ -67,6 +84,13 @@ final class LogSessionRegistry {
         return SESSIONS.computeIfAbsent(key, k -> LogSessionFactory.create(workspaceFolder));
     }
 
+    static LogSession peekSessionFor(File workspaceFolder) {
+        if (workspaceFolder == null) {
+            return null;
+        }
+        return SESSIONS.get(sessionKey(workspaceFolder));
+    }
+
     static <T> T withWorkspace(File workspaceFolder, Supplier<T> task) {
         LogSession previous = CURRENT.get();
         CURRENT.set(sessionFor(workspaceFolder));
@@ -114,12 +138,14 @@ final class LogSessionRegistry {
 
     private static File activeWorkspaceFolder() {
         try {
-            Window window = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
-            while (window != null) {
-                if (window instanceof MCreator mcreator) {
-                    return mcreator.getWorkspaceFolder();
+            List<File> openWorkspaces = new ArrayList<>();
+            for (Window window : Window.getWindows()) {
+                if (window instanceof MCreator mcreator && window.isDisplayable()) {
+                    openWorkspaces.add(mcreator.getWorkspaceFolder());
                 }
-                window = window.getOwner();
+            }
+            if (openWorkspaces.size() == 1) {
+                return openWorkspaces.get(0);
             }
         } catch (Exception ignored) {
         }

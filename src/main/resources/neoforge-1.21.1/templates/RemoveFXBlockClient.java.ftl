@@ -14,6 +14,11 @@ public final class RemoveFXBlockClient {
     private RemoveFXBlockClient() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static RemoveBuilder destroy(double x, double y, double z) {
         return new RemoveBuilder(BlockPos.containing(x, y, z));
     }
@@ -60,11 +65,10 @@ public final class RemoveFXBlockClient {
 
                 ResourceLocation resolvedLocation = null;
                 if (this.effectName != null && !this.effectName.isEmpty()) {
-                    try {
-                        resolvedLocation = ResourceLocation.fromNamespaceAndPath("photon", this.effectName);
-                    } catch (Exception e) {
-                        LOGGER.error("[RemoveFXBlockClient] Invalid effect name '{}': {}",
-                                this.effectName, e.getMessage(), e);
+                    resolvedLocation = resolveEffectLocation(this.effectName);
+                    if (resolvedLocation == null) {
+                        LOGGER.error("[RemoveFXBlockClient] Invalid effect name '{}' could not be parsed into a ResourceLocation.",
+                                this.effectName);
                         return;
                     }
                 }

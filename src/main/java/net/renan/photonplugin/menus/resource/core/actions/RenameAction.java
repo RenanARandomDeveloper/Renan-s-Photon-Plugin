@@ -10,7 +10,6 @@ import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameRules;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
-import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import net.renan.photonplugin.menus.resource.core.support.MenuMessages;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
 
@@ -25,32 +24,8 @@ public final class RenameAction {
     private RenameAction() {
     }
 
-    public record RenameOutcome(int status, File dest) {
-        private static final int RENAMED = 0, SKIPPED = 1, CANCELLED = 2;
-
-        static RenameOutcome renamed(File dest) {
-            return new RenameOutcome(RENAMED, dest);
-        }
-
-        static RenameOutcome skipped() {
-            return new RenameOutcome(SKIPPED, null);
-        }
-
-        static RenameOutcome cancelled() {
-            return new RenameOutcome(CANCELLED, null);
-        }
-
-        public boolean isRenamed() {
-            return status == RENAMED;
-        }
-
-        public boolean isCancelled() {
-            return status == CANCELLED;
-        }
-    }
-
     public static RenameOutcome promptAndRenameFile(Component parent, File item, String progress,
-                                                     InvalidNameResolver nameResolver, BulkConflictResolver resolver) {
+                                                    InvalidNameResolver nameResolver, BulkConflictResolver resolver) {
         FileNameParts parts = FileNameParts.of(item);
         String hint = progress + "  " + L10N.t("plugin.photon.resourcemenu.rename.input.message.file", FileNameRules.canonicalExtension(parts.extension())) + "\n"
                 + L10N.t("plugin.photon.resourcemenu.rename.current.name") + ": " + item.getName();
@@ -65,6 +40,9 @@ public final class RenameAction {
         }
 
         String extension = parts.extension();
+        if (!extension.isEmpty() && newName.length() > extension.length() && FileNameRules.hasExtension(newName, extension)) {
+            newName = newName.substring(0, newName.length() - extension.length());
+        }
         if (FileNameRules.requiresStrictNaming(extension)) {
             newName = nameResolver.resolve(parent, newName, progress);
             if (newName == null) return RenameOutcome.skipped();
@@ -93,14 +71,7 @@ public final class RenameAction {
         if (resolution.action() == ConflictResolution.ACTION_CANCEL) return RenameOutcome.cancelled();
         if (resolution.action() == ConflictResolution.ACTION_SKIP) return RenameOutcome.skipped();
         dest = resolution.targetFile();
-        if (dest.exists()) {
-            boolean removed = dest.delete();
-            if (!removed) {
-                MenuLog.warn("Could not remove conflicting destination before rename: " + dest.getAbsolutePath());
-                return RenameOutcome.skipped();
-            }
-        }
-        if (FileOps.renameFile(item, dest)) {
+        if (FileOps.replaceMove(item, dest)) {
             return RenameOutcome.renamed(dest);
         }
         EdtSupport.onEdtVoid(() -> JOptionPane.showMessageDialog(parent,
@@ -110,8 +81,8 @@ public final class RenameAction {
     }
 
     private static void renameOneFolder(MCreator mcreator, FXBrowserPanel browser, File item, String progress,
-                                         InvalidNameResolver nameResolver, BulkConflictResolver resolver,
-                                         int[] counts, boolean[] cancelAllHolder) {
+                                        InvalidNameResolver nameResolver, BulkConflictResolver resolver,
+                                        int[] counts, boolean[] cancelAllHolder) {
         String hint = progress + "  " + L10N.t("plugin.photon.resourcemenu.rename.input.message") + "\n"
                 + L10N.t("plugin.photon.resourcemenu.rename.current.name") + ": " + browser.getFolderName(item);
         String newName = EdtSupport.onEdt(() -> JOptionPane.showInputDialog(mcreator, hint, browser.getFolderName(item)));
@@ -151,14 +122,7 @@ public final class RenameAction {
         }
         if (resolution.action() == ConflictResolution.ACTION_SKIP) return;
         dest = resolution.targetFile();
-        if (dest.exists()) {
-            boolean removed = FileOps.deleteRecursively(dest);
-            if (!removed) {
-                MenuLog.warn("Could not remove conflicting destination before rename: " + dest.getAbsolutePath());
-                return;
-            }
-        }
-        if (FileOps.renameFile(item, dest)) {
+        if (FileOps.replaceMove(item, dest)) {
             counts[1]++;
         } else {
             EdtSupport.onEdtVoid(() -> JOptionPane.showMessageDialog(mcreator,
@@ -218,5 +182,29 @@ public final class RenameAction {
             });
         });
         return btn;
+    }
+
+    public record RenameOutcome(int status, File dest) {
+        private static final int RENAMED = 0, SKIPPED = 1, CANCELLED = 2;
+
+        static RenameOutcome renamed(File dest) {
+            return new RenameOutcome(RENAMED, dest);
+        }
+
+        static RenameOutcome skipped() {
+            return new RenameOutcome(SKIPPED, null);
+        }
+
+        static RenameOutcome cancelled() {
+            return new RenameOutcome(CANCELLED, null);
+        }
+
+        public boolean isRenamed() {
+            return status == RENAMED;
+        }
+
+        public boolean isCancelled() {
+            return status == CANCELLED;
+        }
     }
 }

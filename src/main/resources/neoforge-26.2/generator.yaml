@@ -1,0 +1,21 @@
+import_formatter:
+  duplicates_whitelist:
+    - java.util
+    - net.minecraft
+  priority_imports:
+    Nullable: javax.annotation
+    Codec: com.mojang.serialization
+    SoundEvent: net.minecraft.sounds
+    Blocks: net.minecraft.world.level.block
+    Items: net.minecraft.world.item
+    Multimap: com.google.common.collect
+    ImmutableSet: com.google.common.collect
+    Iterables: com.google.common.collect
+    Attributes: net.minecraft.world.entity.ai.attributes
+    Keyframe: net.minecraft.client.animation
+    Potion: net.minecraft.world.item.alchemy
+    AttachmentType: net.neoforged.neoforge.attachment
+    MapColor: net.minecraft.world.level.material
+    AttributeModifier: net.minecraft.world.entity.ai.attributes
+    Consumer: java.util.function
+    Capabilities: net.neoforged.neoforge.capabilities

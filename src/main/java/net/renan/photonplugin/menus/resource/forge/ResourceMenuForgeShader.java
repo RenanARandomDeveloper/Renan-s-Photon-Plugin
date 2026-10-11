@@ -1,6 +1,5 @@
 package net.renan.photonplugin.menus.resource.forge;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.component.TransparentToolBar;
 import net.mcreator.ui.dialogs.file.ExtensionFilter;
@@ -12,6 +11,7 @@ import net.renan.photonplugin.log.Log;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 
 import javax.swing.*;
@@ -44,7 +44,8 @@ public class ResourceMenuForgeShader {
     private static final String SHADER_FSH_EXTENSION = ".fsh";
     private static final String SHADER_JSON_EXTENSION = ".json";
 
-    private ResourceMenuForgeShader() {}
+    private ResourceMenuForgeShader() {
+    }
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter) {
 
@@ -52,12 +53,16 @@ public class ResourceMenuForgeShader {
                 Set.of(SHADER_FSH_EXTENSION, SHADER_JSON_EXTENSION),
                 file -> {
                     try {
-                        if (file.getName().toLowerCase().endsWith(SHADER_JSON_EXTENSION)) {
-                            try { return scaleIconTo(UIRES.get("64px_photon.json"), 64); }
-                            catch (Exception ignored) {}
+                        if (file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(SHADER_JSON_EXTENSION)) {
+                            try {
+                                return scaleIconTo(UIRES.get("64px_photon.json"), 64);
+                            } catch (Exception ignored) {
+                            }
                         }
                         return scaleIconTo(UIRES.get("64px_photon.fsh"), 64);
-                    } catch (Exception ignored) { return null; }
+                    } catch (Exception ignored) {
+                        return null;
+                    }
                 }
         );
 
@@ -112,7 +117,7 @@ public class ResourceMenuForgeShader {
 
             int invalidNameCount = (int) java.util.Arrays.stream(selectedSources)
                     .filter(src -> {
-                        boolean strict = src.getName().toLowerCase().endsWith(SHADER_JSON_EXTENSION) ? strictJson : strictFsh;
+                        boolean strict = src.getName().toLowerCase(java.util.Locale.ROOT).endsWith(SHADER_JSON_EXTENSION) ? strictJson : strictFsh;
                         return strict && !isValidStrictFileName(src.getName());
                     })
                     .count();
@@ -125,7 +130,7 @@ public class ResourceMenuForgeShader {
             runFileTaskInBackground(mcreator, () -> {
                 try {
                     for (File source : selectedSources) {
-                        boolean isJson = source.getName().toLowerCase().endsWith(SHADER_JSON_EXTENSION);
+                        boolean isJson = source.getName().toLowerCase(java.util.Locale.ROOT).endsWith(SHADER_JSON_EXTENSION);
                         boolean strict = isJson ? strictJson : strictFsh;
 
                         String fileName = source.getName();
@@ -140,8 +145,7 @@ public class ResourceMenuForgeShader {
                         if (resolution.action() == ACTION_SKIP) continue;
                         dest = resolution.targetFile();
 
-                        if (dest.exists()) dest.delete();
-                        FileIO.copyFile(source, dest);
+                        FileOps.copyReplacing(source, dest);
 
                         importedFiles.add(dest);
                     }
@@ -150,13 +154,15 @@ public class ResourceMenuForgeShader {
                 }
             }, () -> {
                 try {
+                    if (!importedFiles.isEmpty()) {
+                        browser.refresh();
+                    }
                     if (failure[0] != null) {
                         Log.error("Failed to import shader files into '" + targetDir.getAbsolutePath() + "'", failure[0]);
                         JOptionPane.showMessageDialog(mcreator,
                                 L10N.t("plugin.photon.resourcemenu.import.failed") + failure[0].getMessage(),
                                 L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
                     } else if (!importedFiles.isEmpty()) {
-                        browser.refresh();
                         JOptionPane.showMessageDialog(mcreator, importedFiles.size() + " "
                                 + L10N.t("plugin.photon.resourcemenu.action.imported")
                                 + " \u2192 \"" + browser.getFolderName(targetDir) + "\""

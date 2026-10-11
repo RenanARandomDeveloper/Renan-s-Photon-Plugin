@@ -17,6 +17,11 @@ public final class SummonFXBlockClient {
     private SummonFXBlockClient() {
     }
 
+    private static Identifier resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? Identifier.tryParse(name) : Identifier.tryParse("photon:" + name);
+    }
+
     public static EffectBuilder create(double x, double y, double z) {
         return new EffectBuilder(BlockPos.containing(x, y, z));
     }
@@ -119,7 +124,13 @@ public final class SummonFXBlockClient {
                     return;
                 }
 
-                var fx = FXHelper.getFX(Identifier.fromNamespaceAndPath("photon", effectName));
+                Identifier fxLocation = resolveEffectLocation(effectName);
+                if (fxLocation == null) {
+                    LOGGER.warn("[SummonFXBlockClient] Invalid effect name '{}' could not be parsed into an Identifier.", effectName);
+                    return;
+                }
+
+                var fx = FXHelper.getFX(fxLocation);
                 if (fx == null) {
                     LOGGER.warn("[SummonFXBlockClient] Effect '{}' not found by FXHelper.", effectName);
                     return;

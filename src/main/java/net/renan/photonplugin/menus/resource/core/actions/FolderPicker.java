@@ -10,8 +10,11 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Set;
 
 public final class FolderPicker {
@@ -19,21 +22,23 @@ public final class FolderPicker {
     private FolderPicker() {
     }
 
-    public record FolderPickerNode(File dir, String label) {
-        @Override
-        public String toString() {
-            return label;
-        }
+    private static DefaultMutableTreeNode buildFolderOnlyTree(File dir, String label, Set<String> excludePaths) {
+        return buildFolderOnlyTree(dir, label, excludePaths, new HashSet<>());
     }
 
-    private static DefaultMutableTreeNode buildFolderOnlyTree(File dir, String label, Set<String> excludePaths) {
+    private static DefaultMutableTreeNode buildFolderOnlyTree(File dir, String label, Set<String> excludePaths, Set<Path> visited) {
         DefaultMutableTreeNode node = new DefaultMutableTreeNode(new FolderPickerNode(dir, label));
+        try {
+            if (!visited.add(dir.toPath().toRealPath())) return node;
+        } catch (IOException | RuntimeException ex) {
+            return node;
+        }
         File[] subs = dir.listFiles(File::isDirectory);
         if (subs != null) {
             Arrays.sort(subs, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
             for (File sub : subs) {
                 if (!excludePaths.contains(sub.getAbsolutePath())) {
-                    node.add(buildFolderOnlyTree(sub, sub.getName(), excludePaths));
+                    node.add(buildFolderOnlyTree(sub, sub.getName(), excludePaths, visited));
                 }
             }
         }
@@ -101,5 +106,12 @@ public final class FolderPicker {
         DefaultMutableTreeNode selNode = (DefaultMutableTreeNode) selPath.getLastPathComponent();
         if (selNode.getUserObject() instanceof FolderPickerNode fpn) return fpn.dir();
         return fallback;
+    }
+
+    public record FolderPickerNode(File dir, String label) {
+        @Override
+        public String toString() {
+            return label;
+        }
     }
 }

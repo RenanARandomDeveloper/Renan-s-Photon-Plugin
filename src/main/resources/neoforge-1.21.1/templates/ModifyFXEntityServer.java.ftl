@@ -1,6 +1,7 @@
 package ${package}.photon_plugin;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
@@ -13,6 +14,11 @@ public final class ModifyFXEntityServer {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private ModifyFXEntityServer() {
+    }
+
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
     }
 
     public static ModifyBuilder modify(Entity entity) {
@@ -80,6 +86,14 @@ public final class ModifyFXEntityServer {
                 if (sanitizedEntities.isEmpty()) {
                     LOGGER.warn("[ModifyFXEntityServer] All provided entities were null for effect modification{}.", describeEffect());
                     return;
+                }
+
+                if (this.effectName != null && !this.effectName.isEmpty()) {
+                    ResourceLocation targetLocation = resolveEffectLocation(this.effectName);
+                    if (targetLocation == null) {
+                        LOGGER.warn("[ModifyFXEntityServer] Invalid effect name '{}' could not be parsed into a ResourceLocation.", this.effectName);
+                        return;
+                    }
                 }
 
                 ServerEffectScheduler.queueServerWork(1, () -> {

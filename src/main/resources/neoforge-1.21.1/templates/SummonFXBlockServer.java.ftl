@@ -14,6 +14,11 @@ public final class SummonFXBlockServer {
     private SummonFXBlockServer() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static EffectBuilder create(double x, double y, double z) {
         return new EffectBuilder(BlockPos.containing(x, y, z));
     }
@@ -92,8 +97,14 @@ public final class SummonFXBlockServer {
 
                 ServerEffectScheduler.queueServerWork(1, () -> {
                     try {
+                        ResourceLocation fxLocation = resolveEffectLocation(this.effectName);
+                        if (fxLocation == null) {
+                            LOGGER.warn("[SummonFXBlockServer] Invalid effect name '{}' could not be parsed into a ResourceLocation.", this.effectName);
+                            return;
+                        }
+
                         var effectPacket = new BlockEffectCommand();
-                        effectPacket.setLocation(ResourceLocation.fromNamespaceAndPath("photon", this.effectName));
+                        effectPacket.setLocation(fxLocation);
                         effectPacket.setPos(this.pos);
                         effectPacket.setOffset(this.offset);
                         effectPacket.setRotation(this.rotation);

@@ -19,19 +19,20 @@ final class RootShortcutsBar {
         bar.setOpaque(false);
         bar.setBorder(BorderFactory.createEmptyBorder(0, 4, 2, 0));
 
-        final Color normalBg = new Color(55, 55, 55);
-        final Color hoverBg = new Color(75, 75, 75);
+        final Color normalBg = MenuTheme.altBackgroundColor();
+        final Color hoverBg = MenuTheme.blend(normalBg, MenuTheme.foregroundColor(), 0.18f);
+        final Color borderColor = MenuTheme.blend(normalBg, MenuTheme.foregroundColor(), 0.35f);
         final Color dropBg = MenuTheme.accentColor();
 
         for (Supplier<File> rootSupplier : browser.rootSuppliers) {
             File rootDir = rootSupplier.get();
             JLabel pill = new JLabel("\u2192 " + rootDir.getName());
             pill.setFont(pill.getFont().deriveFont(Font.PLAIN, 11f));
-            pill.setForeground(new Color(190, 190, 190));
+            pill.setForeground(MenuTheme.foregroundColor());
             pill.setBackground(normalBg);
             pill.setOpaque(true);
             pill.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(new Color(90, 90, 90), 1),
+                    BorderFactory.createLineBorder(borderColor, 1),
                     BorderFactory.createEmptyBorder(2, 8, 2, 8)));
             pill.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             pill.setToolTipText(rootDir.getAbsolutePath());

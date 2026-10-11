@@ -3,26 +3,25 @@ package net.renan.photonplugin.menus.resource.common.fx.virtual;
 import net.mcreator.ui.component.util.ComponentUtils;
 import net.renan.photonplugin.menus.resource.core.browser.*;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
+import net.renan.photonplugin.menus.resource.core.support.MenuTheme;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class VirtualFXBrowserPanel extends FXBrowserPanel {
 
-    private VirtualFolderStore store;
     private final Supplier<File> rootDirGetter;
+    private VirtualFolderStore store;
 
     public VirtualFXBrowserPanel(List<Supplier<File>> rootSuppliers, String extension,
-                                  Function<File, Icon> iconProvider) {
+                                 Function<File, Icon> iconProvider) {
         super(rootSuppliers, extension, iconProvider);
         this.rootDirGetter = (rootSuppliers != null && !rootSuppliers.isEmpty()) ? rootSuppliers.get(0) : null;
     }
@@ -68,7 +67,8 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
 
         if (filterType != FilterType.FILE) {
             for (File vDir : store.listVirtualDirs(currentDir)) {
-                if (!filterText.isEmpty() && !getFolderName(vDir).toLowerCase().contains(filterText)) continue;
+                if (!filterText.isEmpty() && !getFolderName(vDir).toLowerCase(Locale.ROOT).contains(filterText))
+                    continue;
                 FolderCard card = new FolderCard(vDir, this);
                 if (prevFolders.contains(vDir)) {
                     card.setSelected(true);
@@ -98,7 +98,7 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
 
     @Override
     protected void rebuildBreadcrumbPanel(List<File> roots) {
-        if (store != null && currentDir != null && store.isVirtualDir(currentDir)) {
+        if (store != null && store.isVirtualDir(currentDir)) {
             breadcrumbPanel.removeAll();
 
             String rootName = (rootDirGetter != null && rootDirGetter.get() != null) ? rootDirGetter.get().getName() : "fx";
@@ -124,7 +124,7 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
     private void addVirtualBreadcrumbSegment(String label, File target, boolean isCurrent) {
         if (breadcrumbPanel.getComponentCount() > 0) {
             JLabel sep = new JLabel(" / ");
-            sep.setForeground(new Color(90, 90, 90));
+            sep.setForeground(MenuTheme.foregroundColor(110));
             ComponentUtils.deriveFont(sep, 11f);
             breadcrumbPanel.add(sep);
         }
@@ -133,13 +133,13 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
         ComponentUtils.deriveFont(lbl, 11f);
 
         if (isCurrent) {
-            lbl.setForeground(new Color(200, 200, 200));
+            lbl.setForeground(MenuTheme.foregroundColor());
             lbl.setFont(lbl.getFont().deriveFont(Font.BOLD));
             breadcrumbPanel.add(lbl);
             return;
         }
 
-        lbl.setForeground(new Color(130, 190, 100));
+        lbl.setForeground(MenuTheme.accentColor());
         lbl.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         lbl.addMouseListener(new MouseAdapter() {
             @Override
@@ -149,18 +149,45 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
 
             @Override
             public void mouseEntered(MouseEvent e) {
-                lbl.setForeground(new Color(160, 220, 130));
+                lbl.setForeground(MenuTheme.shade(MenuTheme.accentColor(), 30));
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                lbl.setForeground(new Color(130, 190, 100));
+                lbl.setForeground(MenuTheme.accentColor());
             }
         });
 
         FileDropSupport.install(lbl, this, "breadcrumb '" + label + "'", () -> target, null, null, null);
 
         breadcrumbPanel.add(lbl);
+    }
+
+    @Override
+    protected void onFilterChanged() {
+        if (store != null) {
+            refreshVirtual();
+        } else {
+            super.onFilterChanged();
+        }
+    }
+
+    @Override
+    public boolean isInternalDragItem(File file) {
+        return (store != null && store.isVirtualDir(file)) || super.isInternalDragItem(file);
+    }
+
+    @Override
+    protected File externalImportTarget(File destDir) {
+        if (store == null) return super.externalImportTarget(destDir);
+        return rootDirGetter != null ? rootDirGetter.get() : null;
+    }
+
+    @Override
+    protected void afterExternalImport(List<File> imported, File destDir) {
+        if (store != null && store.isVirtualDir(destDir)) {
+            store.assignToVirtualDir(imported, destDir);
+        }
     }
 
     @Override
@@ -195,7 +222,12 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
         for (File folder : virtualFolders) {
             if (folder.equals(destDir)) continue;
             String destParent = store.isVirtualDir(destDir) ? store.virtualDirName(destDir) : "";
-            if (store.moveFolderInto(store.virtualDirName(folder), destParent)) moved++;
+            String originalName = store.lastSegmentOf(store.virtualDirName(folder));
+            String finalName = store.moveFolderIntoReturningName(store.virtualDirName(folder), destParent);
+            if (finalName != null) {
+                moved++;
+                if (!finalName.equals(originalName)) resolver.noteAutoRename(originalName, finalName);
+            }
         }
 
         return moved;

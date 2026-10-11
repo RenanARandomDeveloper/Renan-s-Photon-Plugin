@@ -9,7 +9,10 @@ import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import java.io.File;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -31,6 +34,34 @@ public final class VirtualFolderStore {
         photonDir.mkdirs();
         this.storeFile = new File(photonDir, "fx_virtual_folders.json");
         load();
+    }
+
+    private static String parentPath(String fullPath) {
+        int idx = fullPath.lastIndexOf(SEP);
+        return idx >= 0 ? fullPath.substring(0, idx) : "";
+    }
+
+    private static String lastSegment(String fullPath) {
+        int idx = fullPath.lastIndexOf(SEP);
+        return idx >= 0 ? fullPath.substring(idx + 1) : fullPath;
+    }
+
+    private static boolean isDescendantOrSelf(String maybeAncestor, String path) {
+        return path.equals(maybeAncestor) || path.startsWith(maybeAncestor + SEP);
+    }
+
+    public static String sanitizeSegmentName(String name) {
+        return name == null ? "" : name.replace(SEP, "");
+    }
+
+    private static boolean isSafeKey(String key) {
+        if (key == null) return false;
+        if (key.isEmpty()) return true;
+        for (String segment : key.split(SEP, -1)) {
+            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) return false;
+            if (segment.indexOf('/') >= 0 || segment.indexOf('\\') >= 0 || segment.indexOf('\0') >= 0) return false;
+        }
+        return true;
     }
 
     public boolean isVirtualDir(File f) {
@@ -57,27 +88,8 @@ public final class VirtualFolderStore {
         return parentPath.isEmpty() ? childName : parentPath + SEP + childName;
     }
 
-    private static String parentPath(String fullPath) {
-        int idx = fullPath.lastIndexOf(SEP);
-        return idx >= 0 ? fullPath.substring(0, idx) : "";
-    }
-
-    private static String lastSegment(String fullPath) {
-        int idx = fullPath.lastIndexOf(SEP);
-        return idx >= 0 ? fullPath.substring(idx + 1) : fullPath;
-    }
-
-    private static boolean isDescendantOrSelf(String maybeAncestor, String path) {
-        return path.equals(maybeAncestor) || path.startsWith(maybeAncestor + SEP);
-    }
-
-    public static String sanitizeSegmentName(String name) {
-        return name == null ? "" : name.replace(SEP, "");
-    }
-
-
     public synchronized List<File> listVirtualDirs(File currentDir) {
-        String parent = (currentDir != null && isVirtualDir(currentDir)) ? virtualDirName(currentDir) : "";
+        String parent = (isVirtualDir(currentDir)) ? virtualDirName(currentDir) : "";
         return data.keySet().stream()
                 .filter(k -> !k.isEmpty())
                 .filter(k -> parentPath(k).equals(parent))
@@ -142,7 +154,7 @@ public final class VirtualFolderStore {
         Map<String, File> byName = filesByName();
         List<File> result = new ArrayList<>();
 
-        if (currentDir != null && isVirtualDir(currentDir)) {
+        if (isVirtualDir(currentDir)) {
             for (String name : data.getOrDefault(virtualDirName(currentDir), List.of())) {
                 File f = byName.get(name);
                 if (f != null && matches(f, extension, filterText)) result.add(f);
@@ -184,16 +196,20 @@ public final class VirtualFolderStore {
     }
 
     public synchronized boolean moveFolderInto(String sourceFullPath, String destParentPath) {
-        if (isDescendantOrSelf(sourceFullPath, destParentPath)) return false;
+        return moveFolderIntoReturningName(sourceFullPath, destParentPath) != null;
+    }
+
+    public synchronized String moveFolderIntoReturningName(String sourceFullPath, String destParentPath) {
+        if (isDescendantOrSelf(sourceFullPath, destParentPath)) return null;
         String name = lastSegment(sourceFullPath);
         if (data.containsKey(childPath(destParentPath, name))) {
             name = uniqueChildName(destParentPath, name);
         }
         String newFullPath = childPath(destParentPath, name);
-        if (newFullPath.equals(sourceFullPath)) return false;
+        if (newFullPath.equals(sourceFullPath)) return null;
         reparentSubtree(sourceFullPath, newFullPath);
         save();
-        return true;
+        return name;
     }
 
     public synchronized void deleteFolder(File virtualDir) {
@@ -280,9 +296,9 @@ public final class VirtualFolderStore {
 
     private String uniqueChildName(String parentPath, String baseName) {
         String candidate = baseName;
-        int counter = 2;
+        int counter = 1;
         while (data.containsKey(childPath(parentPath, candidate))) {
-            candidate = baseName + " (" + counter + ")";
+            candidate = baseName + "_" + counter;
             counter++;
         }
         return candidate;
@@ -291,7 +307,17 @@ public final class VirtualFolderStore {
     private boolean matches(File f, String ext, String filter) {
         return (ext == null || FileNameRules.hasExtension(f, ext))
                 && (filter == null || filter.isBlank()
-                || f.getName().toLowerCase().contains(filter.toLowerCase()));
+                || f.getName().toLowerCase(Locale.ROOT).contains(filter.toLowerCase(Locale.ROOT)));
+    }
+
+    private void backupCorruptStore() {
+        try {
+            Path backup = new File(storeFile.getParentFile(), storeFile.getName() + ".corrupt-" + System.currentTimeMillis()).toPath();
+            Files.copy(storeFile.toPath(), backup, StandardCopyOption.REPLACE_EXISTING);
+            MenuLog.warn("The virtual folder store could not be read; a copy was kept at " + backup);
+        } catch (Exception ex) {
+            MenuLog.warn("Could not keep a copy of the unreadable virtual folder store: " + ex.getMessage());
+        }
     }
 
     private void load() {
@@ -301,17 +327,42 @@ public final class VirtualFolderStore {
             Type type = new TypeToken<LinkedHashMap<String, List<String>>>() {
             }.getType();
             LinkedHashMap<String, List<String>> loaded = GSON.fromJson(json, type);
-            if (loaded != null) data.putAll(loaded);
+            if (loaded == null) return;
+            for (Map.Entry<String, List<String>> entry : loaded.entrySet()) {
+                if (!isSafeKey(entry.getKey())) {
+                    MenuLog.warn("Ignoring unsafe virtual folder path in " + storeFile.getName());
+                    continue;
+                }
+                List<String> names = new ArrayList<>();
+                if (entry.getValue() != null) {
+                    for (String name : entry.getValue()) {
+                        if (name != null && !name.isBlank()) names.add(name);
+                    }
+                }
+                data.put(entry.getKey(), names);
+            }
         } catch (Exception e) {
             MenuLog.error("Failed to load virtual folder store from " + storeFile.getAbsolutePath(), e);
+            backupCorruptStore();
         }
     }
 
     private void save() {
+        Path target = storeFile.toPath();
+        Path temp = new File(storeFile.getParentFile(), storeFile.getName() + ".tmp").toPath();
         try {
-            Files.writeString(storeFile.toPath(), GSON.toJson(data), StandardCharsets.UTF_8);
+            Files.writeString(temp, GSON.toJson(data), StandardCharsets.UTF_8);
+            try {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ex) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (Exception e) {
             MenuLog.error("Failed to save virtual folder store to " + storeFile.getAbsolutePath(), e);
+            try {
+                Files.deleteIfExists(temp);
+            } catch (Exception ignored) {
+            }
         }
     }
 }

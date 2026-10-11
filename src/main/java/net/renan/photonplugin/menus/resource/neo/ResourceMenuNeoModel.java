@@ -12,6 +12,7 @@ import net.renan.photonplugin.menus.resource.common.ResourceMenuModel;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
+import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 
@@ -20,6 +21,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -40,7 +42,9 @@ import static net.renan.photonplugin.menus.resource.core.support.MenuMessages.bu
 import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolbarButton;
 
 public final class ResourceMenuNeoModel {
-    private ResourceMenuNeoModel() {}
+
+    private ResourceMenuNeoModel() {
+    }
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> modelsDirGetter) {
         return createFXPanel(mcreator, modelsDirGetter, modelsDirGetter, true);
@@ -55,15 +59,25 @@ public final class ResourceMenuNeoModel {
         Supplier<File> modelsDirGetter = normalizeToModelsRoot(objDirGetter);
 
         FXBrowserPanel browser = new FXBrowserPanel(List.of(modelsDirGetter), OBJ_EXTENSION,
-                Set.of(OBJ_EXTENSION, JSON_EXTENSION),
+                Set.of(OBJ_EXTENSION, JSON_EXTENSION, GLB_EXTENSION, GLTF_EXTENSION),
                 file -> {
                     try {
-                        if (file.getName().toLowerCase().endsWith(JSON_EXTENSION)) {
-                            try { return scaleIconTo(UIRES.get("64px_photon.json"), 64); }
-                            catch (Exception ignored) {}
+                        String lowerName = file.getName().toLowerCase(Locale.ROOT);
+                        if (lowerName.endsWith(JSON_EXTENSION)) {
+                            try {
+                                return scaleIconTo(UIRES.get("64px_photon.json"), 64);
+                            } catch (Exception ignored) {
+                            }
+                        } else if (isGltfFileName(lowerName)) {
+                            try {
+                                return scaleIconTo(UIRES.get("64px_photon.gltf"), 64);
+                            } catch (Exception ignored) {
+                            }
                         }
                         return scaleIconTo(UIRES.get("64px_photon.obj"), 64);
-                    } catch (Exception ignored) { return null; }
+                    } catch (Exception ignored) {
+                        return null;
+                    }
                 }
         );
 
@@ -71,7 +85,7 @@ public final class ResourceMenuNeoModel {
 
         browser.setPostMoveHook((oldFile, newFile) -> {
             File modelsRoot = modelsDirGetter.get();
-            if (oldFile.isDirectory()) {
+            if (newFile.isDirectory()) {
                 relocateMirroredJsonFolder(modelsRoot, oldFile, newFile);
             } else {
                 syncCompanionsAfterObjRelocate(modelsRoot, oldFile, newFile);
@@ -108,8 +122,9 @@ public final class ResourceMenuNeoModel {
 
     private static File[] showModelImportDialog(MCreator mcreator) {
         File[] selected = FileDialogs.getFileChooserDialog(mcreator, FileChooserType.OPEN, true, null,
-                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.model.import.filter.both"),
-                        "*" + OBJ_EXTENSION, "*" + JSON_EXTENSION));
+                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.model.import.filter.all"),
+                        "*" + OBJ_EXTENSION, "*" + JSON_EXTENSION,
+                        "*" + GLB_EXTENSION, "*" + GLTF_EXTENSION));
         return selected != null ? selected : new File[0];
     }
 
@@ -122,14 +137,18 @@ public final class ResourceMenuNeoModel {
 
             List<File> objSources = new ArrayList<>();
             List<File> jsonSources = new ArrayList<>();
+            List<File> gltfSources = new ArrayList<>();
             for (File src : selectedSources) {
-                if (src.getName().toLowerCase().endsWith(JSON_EXTENSION)) {
+                String lowerName = src.getName().toLowerCase(Locale.ROOT);
+                if (lowerName.endsWith(JSON_EXTENSION)) {
                     jsonSources.add(src);
+                } else if (isGltfFileName(lowerName)) {
+                    gltfSources.add(src);
                 } else {
                     objSources.add(src);
                 }
             }
-            if (objSources.isEmpty() && jsonSources.isEmpty()) return;
+            if (objSources.isEmpty() && jsonSources.isEmpty() && gltfSources.isEmpty()) return;
 
             File navigatedDir = browser.getCurrentDir();
             File modelsRoot = modelsDirGetter.get();
@@ -147,6 +166,15 @@ public final class ResourceMenuNeoModel {
                     : 0;
             InvalidNameResolver objNameResolver = new InvalidNameResolver(objInvalidNameCount);
 
+            int gltfConflictCount = (int) gltfSources.stream()
+                    .filter(src -> new File(targetDir, src.getName()).exists())
+                    .count();
+            BulkConflictResolver gltfOverwriteResolver = new BulkConflictResolver(gltfConflictCount, gltfSources.size() >= 2);
+            int gltfInvalidNameCount = (int) gltfSources.stream()
+                    .filter(src -> !isValidStrictFileName(src.getName()))
+                    .count();
+            InvalidNameResolver gltfNameResolver = new InvalidNameResolver(gltfInvalidNameCount);
+
             boolean strictJson = true;
             int jsonConflictCount = (int) jsonSources.stream()
                     .filter(src -> new File(jsonTargetDir, src.getName()).exists())
@@ -159,6 +187,7 @@ public final class ResourceMenuNeoModel {
 
             List<File> importedObjFiles = new ArrayList<>();
             List<File> importedJsonFiles = new ArrayList<>();
+            List<File> importedGltfFiles = new ArrayList<>();
             int[] skippedNoMtl = new int[1];
             int[] skippedNameMismatch = new int[1];
             Exception[] failure = new Exception[1];
@@ -191,7 +220,8 @@ public final class ResourceMenuNeoModel {
                             }
                         });
                         if (mtlSource == null) {
-                            if (mismatched[0]) skippedNameMismatch[0]++; else skippedNoMtl[0]++;
+                            if (mismatched[0]) skippedNameMismatch[0]++;
+                            else skippedNoMtl[0]++;
                             continue;
                         }
 
@@ -210,12 +240,25 @@ public final class ResourceMenuNeoModel {
                         String baseName = FileNameParts.of(destObj).baseName();
                         File destMtl = new File(targetDir, baseName + MTL_EXTENSION);
 
-                        if (destObj.exists()) destObj.delete();
-                        FileIO.copyFile(objSource, destObj);
-                        if (destMtl.exists()) destMtl.delete();
-                        FileIO.copyFile(mtlSource, destMtl);
+                        FileOps.copyReplacing(objSource, destObj);
+                        FileOps.copyReplacing(mtlSource, destMtl);
 
                         importedObjFiles.add(destObj);
+                    }
+
+                    for (File gltfSource : gltfSources) {
+                        String fileName = gltfNameResolver.resolve(mcreator, gltfSource.getName());
+                        if (fileName == null) continue;
+
+                        File destGltf = new File(targetDir, fileName);
+                        ConflictResolution resolution = gltfOverwriteResolver.resolve(mcreator, destGltf);
+                        if (resolution.action() == ACTION_CANCEL) break;
+                        if (resolution.action() == ACTION_SKIP) continue;
+                        destGltf = resolution.targetFile();
+
+                        FileOps.copyReplacing(gltfSource, destGltf);
+
+                        importedGltfFiles.add(destGltf);
                     }
 
                     if (!jsonSources.isEmpty() && !jsonTargetDir.exists() && !jsonTargetDir.mkdirs()) {
@@ -234,8 +277,7 @@ public final class ResourceMenuNeoModel {
                         if (resolution.action() == ACTION_SKIP) continue;
                         destJson = resolution.targetFile();
 
-                        if (destJson.exists()) destJson.delete();
-                        FileIO.copyFile(jsonSource, destJson);
+                        FileOps.copyReplacing(jsonSource, destJson);
 
                         importedJsonFiles.add(destJson);
                     }
@@ -244,19 +286,25 @@ public final class ResourceMenuNeoModel {
                 }
             }, () -> {
                 try {
+                    if (!importedObjFiles.isEmpty() || !importedJsonFiles.isEmpty() || !importedGltfFiles.isEmpty()) {
+                        browser.refresh();
+                    }
                     if (failure[0] != null) {
                         Log.error("Failed to import model files into '" + targetDir.getAbsolutePath() + "'", failure[0]);
                         JOptionPane.showMessageDialog(mcreator,
                                 L10N.t("plugin.photon.resourcemenu.import.failed") + failure[0].getMessage(),
                                 L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);
-                    } else if (!importedObjFiles.isEmpty() || !importedJsonFiles.isEmpty()) {
-                        browser.refresh();
+                    } else if (!importedObjFiles.isEmpty() || !importedJsonFiles.isEmpty() || !importedGltfFiles.isEmpty()) {
                         StringBuilder message = new StringBuilder();
-                        if (!importedObjFiles.isEmpty()) {
-                            message.append(buildItemLabel(importedObjFiles.size(), 0)).append(" ")
+                        int importedModelCount = importedObjFiles.size() + importedGltfFiles.size();
+                        if (importedModelCount > 0) {
+                            String objNotice = autoRenameNotice(objOverwriteResolver);
+                            String gltfNotice = autoRenameNotice(gltfOverwriteResolver);
+                            message.append(buildItemLabel(importedModelCount, 0)).append(" ")
                                     .append(L10N.t("plugin.photon.resourcemenu.action.imported"))
                                     .append(" \u2192 \"").append(targetDir.getName()).append("\"")
-                                    .append(autoRenameNotice(objOverwriteResolver));
+                                    .append(objNotice);
+                            if (!gltfNotice.equals(objNotice)) message.append(gltfNotice);
                         }
                         if (!importedJsonFiles.isEmpty()) {
                             if (message.length() > 0) message.append("\n");
@@ -286,6 +334,7 @@ public final class ResourceMenuNeoModel {
     }
 
     private static void cloneModelJson(File modelsRoot, File src, File destObj) throws IOException {
+        if (isGltfFileName(src.getName())) return;
         File srcJson = mirrorJsonFileFor(modelsRoot, src);
         if (srcJson.exists()) {
             File destJson = mirrorJsonFileFor(modelsRoot, destObj);
@@ -297,6 +346,7 @@ public final class ResourceMenuNeoModel {
     }
 
     private static void syncCompanionsAfterObjRelocate(File modelsRoot, File oldObjFile, File newObjFile) {
+        if (isGltfFileName(oldObjFile.getName())) return;
         File oldMtl = mtlFileFor(oldObjFile);
         File newMtl = mtlFileFor(newObjFile);
         if (oldMtl.exists() && !renameFile(oldMtl, newMtl)) {

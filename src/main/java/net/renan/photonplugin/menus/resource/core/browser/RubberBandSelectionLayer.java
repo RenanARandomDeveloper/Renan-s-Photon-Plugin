@@ -11,18 +11,8 @@ import java.io.File;
 
 final class RubberBandSelectionLayer extends JPanel {
     private static final int THRESHOLD = 6;
-
-    private static Color fillClr() {
-        return MenuTheme.accentColor(50);
-    }
-
-    private static Color edgeClr() {
-        return MenuTheme.accentColor(190);
-    }
-
     private final FXBrowserPanel browser;
     private final JScrollPane scroll;
-
     private Point pressPoint;
     private Point dragPoint;
     private boolean banding = false;
@@ -80,7 +70,10 @@ final class RubberBandSelectionLayer extends JPanel {
                 dragPoint = null;
                 repaint();
                 if (!wasBanding && pressedComponent != null) redispatchTo(pressedComponent, e);
-                if (wasBanding) lastClickedComponent = null;
+                if (wasBanding) {
+                    lastClickedComponent = null;
+                    browser.fireSelectionChanged();
+                }
                 pressedComponent = null;
             }
 
@@ -117,6 +110,14 @@ final class RubberBandSelectionLayer extends JPanel {
         addMouseListener(ma);
         addMouseMotionListener(ma);
         addMouseWheelListener(ma);
+    }
+
+    private static Color fillClr() {
+        return MenuTheme.accentColor(50);
+    }
+
+    private static Color edgeClr() {
+        return MenuTheme.accentColor(190);
     }
 
     private Component deepestAt(Point layerPt) {

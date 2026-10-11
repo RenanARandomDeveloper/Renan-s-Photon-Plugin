@@ -16,8 +16,6 @@ public final class BackupListSelectionPanel {
     private static final int MIN_VISIBLE_ROWS = 4;
     private static final int MAX_VISIBLE_ROWS = 10;
     private static final int MARGIN_ROWS = 1;
-    static final int DOUBLE_CLICK_THRESHOLD_MS = 450;
-
     private final List<File> manualBackups;
     private final List<File> automaticBackups;
     private final JList<File> manualList;
@@ -72,10 +70,12 @@ public final class BackupListSelectionPanel {
                 withEmptyState(automaticList, automaticBackups, visibleRows));
 
         JPanel listsPanel = new JPanel(new GridLayout(1, 2, 10, 0));
+        listsPanel.setOpaque(false);
         listsPanel.add(manualPanel);
         listsPanel.add(automaticPanel);
 
         JPanel wrapper = new JPanel(new BorderLayout(0, 8));
+        wrapper.setOpaque(false);
         if (selectionMode != ListSelectionModel.SINGLE_SELECTION) {
             wrapper.add(buildSelectAllNoneRow(), BorderLayout.NORTH);
             DialogUtils.bindShortcut(wrapper,
@@ -93,6 +93,57 @@ public final class BackupListSelectionPanel {
     public static BackupListSelectionPanel multiSelect(List<File> manualBackups, List<File> automaticBackups) {
         return new BackupListSelectionPanel(manualBackups, automaticBackups,
                 ListSelectionModel.MULTIPLE_INTERVAL_SELECTION, false);
+    }
+
+    static void bindDoubleClick(JList<File> list, java.util.function.Consumer<File> handler) {
+        list.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (!SwingUtilities.isLeftMouseButton(e) || e.getClickCount() != 2) {
+                    return;
+                }
+                int index = list.locationToIndex(e.getPoint());
+                if (index < 0) {
+                    return;
+                }
+                Rectangle bounds = list.getCellBounds(index, index);
+                if (bounds == null || !bounds.contains(e.getPoint())) {
+                    return;
+                }
+                handler.accept(list.getModel().getElementAt(index));
+            }
+        });
+    }
+
+    private static int clampRows(int itemCount) {
+        if (itemCount <= 0) {
+            return MIN_VISIBLE_ROWS;
+        }
+
+        int contentRows = Math.min(itemCount, MAX_VISIBLE_ROWS);
+        return Math.max(MIN_VISIBLE_ROWS, contentRows + MARGIN_ROWS);
+    }
+
+    private static JComponent withEmptyState(JList<File> list, List<File> backups, int visibleRows) {
+        if (!backups.isEmpty()) {
+            JScrollPane scrollPane = new JScrollPane(list);
+            scrollPane.setBorder(PhotonTheme.roundedLineBorder(PhotonTheme.cardBorder(), 1,
+                    PhotonTheme.LIST_CONTAINER_ARC));
+            return scrollPane;
+        }
+        JLabel emptyLabel = new JLabel(L10N.t("plugin.photon.workspacemenu.backup.list.empty"),
+                SwingConstants.CENTER);
+        emptyLabel.setForeground(PhotonTheme.mutedForeground());
+        emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC));
+
+        JPanel placeholder = new JPanel(new GridBagLayout());
+        placeholder.setOpaque(false);
+        placeholder.add(emptyLabel);
+
+        FontMetrics metrics = list.getFontMetrics(list.getFont());
+        int rowHeight = metrics.getHeight() + 4;
+        placeholder.setPreferredSize(new Dimension(220, Math.max(80, visibleRows * rowHeight)));
+        return placeholder;
     }
 
     public JComponent getComponent() {
@@ -138,48 +189,6 @@ public final class BackupListSelectionPanel {
         }
     }
 
-    static void bindDoubleClick(JList<File> list, java.util.function.Consumer<File> handler) {
-        long[] lastClickTime = { 0L };
-        int[] lastClickIndex = { -1 };
-        long[] suppressUntil = { 0L };
-        list.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mousePressed(java.awt.event.MouseEvent e) {
-                if (e.getButton() != java.awt.event.MouseEvent.BUTTON1) {
-                    return;
-                }
-                int index = list.locationToIndex(e.getPoint());
-                if (index < 0) {
-                    return;
-                }
-                Rectangle bounds = list.getCellBounds(index, index);
-                if (bounds == null || !bounds.contains(e.getPoint())) {
-                    return;
-                }
-
-                long now = System.currentTimeMillis();
-                if (now < suppressUntil[0]) {
-                    lastClickTime[0] = now;
-                    lastClickIndex[0] = index;
-                    return;
-                }
-
-                boolean doubleClicked = index == lastClickIndex[0]
-                        && (now - lastClickTime[0]) <= DOUBLE_CLICK_THRESHOLD_MS;
-
-                if (doubleClicked) {
-                    suppressUntil[0] = now + DOUBLE_CLICK_THRESHOLD_MS;
-                    lastClickTime[0] = 0L;
-                    lastClickIndex[0] = -1;
-                    handler.accept(list.getModel().getElementAt(index));
-                } else {
-                    lastClickTime[0] = now;
-                    lastClickIndex[0] = index;
-                }
-            }
-        });
-    }
-
     public void onSelectionChange(Runnable onChange) {
         manualList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -193,43 +202,19 @@ public final class BackupListSelectionPanel {
         });
     }
 
-    private static int clampRows(int itemCount) {
-        if (itemCount <= 0) {
-            return MIN_VISIBLE_ROWS;
-        }
-
-        int contentRows = Math.min(itemCount, MAX_VISIBLE_ROWS);
-        return Math.max(MIN_VISIBLE_ROWS, contentRows + MARGIN_ROWS);
-    }
-
     private JPanel buildSelectAllNoneRow() {
-        JButton selectAllButton = new JButton(L10N.t("plugin.photon.workspacemenu.list.select_all"));
-        JButton selectNoneButton = new JButton(L10N.t("plugin.photon.workspacemenu.list.select_none"));
+        JButton selectAllButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.list.select_all"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
+        JButton selectNoneButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.list.select_none"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
 
         selectAllButton.addActionListener(e -> selectAll());
         selectNoneButton.addActionListener(e -> selectNone());
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        row.setOpaque(false);
         row.add(selectAllButton);
         row.add(selectNoneButton);
         return row;
-    }
-
-    private static JComponent withEmptyState(JList<File> list, List<File> backups, int visibleRows) {
-        if (!backups.isEmpty()) {
-            return new JScrollPane(list);
-        }
-        JLabel emptyLabel = new JLabel(L10N.t("plugin.photon.workspacemenu.backup.list.empty"),
-                SwingConstants.CENTER);
-        emptyLabel.setForeground(Color.GRAY);
-        emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC));
-
-        JPanel placeholder = new JPanel(new GridBagLayout());
-        placeholder.add(emptyLabel);
-
-        FontMetrics metrics = list.getFontMetrics(list.getFont());
-        int rowHeight = metrics.getHeight() + 4;
-        placeholder.setPreferredSize(new Dimension(220, Math.max(80, visibleRows * rowHeight)));
-        return placeholder;
     }
 }

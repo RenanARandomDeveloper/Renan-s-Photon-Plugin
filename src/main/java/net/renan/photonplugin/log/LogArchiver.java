@@ -59,6 +59,9 @@ final class LogArchiver {
             if (isSameFile(oldLog, currentLogFile)) {
                 continue;
             }
+            if (isTooRecentForMaintenance(oldLog)) {
+                continue;
+            }
             compressLogFile(oldLog, true);
         }
     }
@@ -120,10 +123,18 @@ final class LogArchiver {
             if (isSameFile(file, currentLogFile)) {
                 continue;
             }
+            if (isTooRecentForMaintenance(file)) {
+                continue;
+            }
             if (!file.delete()) {
                 LogInternal.LOGGER.error("[Photon] Failed to delete old log file {}", file.getAbsolutePath());
             }
         }
+    }
+
+    private static boolean isTooRecentForMaintenance(File file) {
+        long age = System.currentTimeMillis() - file.lastModified();
+        return age >= 0 && age < LogConfig.MIN_FILE_AGE_BEFORE_MAINTENANCE_MS;
     }
 
     private static boolean isSameFile(File a, File b) {
@@ -192,24 +203,48 @@ final class LogArchiver {
         }
 
         if (validLogs.size() == 1) {
-            String content = readLogContent(validLogs.get(0));
-            Files.writeString(destination.toPath(), content, StandardCharsets.UTF_8);
+            File only = validLogs.get(0);
+            try {
+                String content = readLogContent(only);
+                Files.writeString(destination.toPath(), content, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new IOException("Failed to export \"" + only.getName()
+                        + "\" - it may have been rotated or deleted by log maintenance while exporting.", e);
+            }
             return;
         }
 
+        int exportedCount = 0;
         try (FileOutputStream fos = new FileOutputStream(destination);
              ZipOutputStream zos = new ZipOutputStream(fos)) {
             zos.setLevel(Deflater.BEST_COMPRESSION);
 
             for (File selected : validLogs) {
-                String content = readLogContent(selected);
+                String content;
+                try {
+                    content = readLogContent(selected);
+                } catch (IOException e) {
+                    LogInternal.LOGGER.warn(
+                            "[Photon] Skipping \"{}\" during export - it changed or was removed by log maintenance",
+                            selected.getName());
+                    continue;
+                }
+
                 String entryName = selected.getName().replaceAll("(?i)\\.(log|zip)$", "") + ".txt";
 
                 ZipEntry entry = new ZipEntry(entryName);
                 zos.putNextEntry(entry);
                 zos.write(content.getBytes(StandardCharsets.UTF_8));
                 zos.closeEntry();
+                exportedCount++;
             }
+        }
+
+        if (exportedCount == 0) {
+            destination.delete();
+            throw new IOException(
+                    "None of the selected log files could be read during export (they may have been rotated "
+                            + "or deleted by log maintenance).");
         }
     }
 

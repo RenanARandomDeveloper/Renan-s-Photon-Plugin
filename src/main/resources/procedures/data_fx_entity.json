@@ -23,6 +23,9 @@
     ],
     "repeating_fields": [
       {
+        "name": "RequiredValues"
+      },
+      {
         "name": "Name",
         "field_definition": {
           "type": "field_photon_fx_selector"

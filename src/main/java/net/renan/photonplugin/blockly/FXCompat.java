@@ -8,53 +8,40 @@ import java.lang.reflect.Proxy;
 
 final class FXCompat {
 
-    private FXCompat() {}
-
     static final LazyResolution<Method> PLATFORM_RUN_LATER = new LazyResolution<>(
             "javafx.application.Platform.runLater(Runnable)",
             () -> forNameAnyLoader("javafx.application.Platform").getMethod("runLater", Runnable.class));
-
     static final LazyResolution<Method> PLATFORM_ENTER_NESTED = new LazyResolution<>(
             "javafx.application.Platform.enterNestedEventLoop(Object)",
             () -> forNameAnyLoader("javafx.application.Platform").getMethod("enterNestedEventLoop", Object.class));
-
     static final LazyResolution<Method> PLATFORM_EXIT_NESTED = new LazyResolution<>(
             "javafx.application.Platform.exitNestedEventLoop(Object, Object)",
             () -> forNameAnyLoader("javafx.application.Platform").getMethod("exitNestedEventLoop", Object.class, Object.class));
-
     static final LazyResolution<Class<?>> WEBVIEW_CLASS = new LazyResolution<>(
             "javafx.scene.web.WebView",
             () -> forNameAnyLoader("javafx.scene.web.WebView"));
-
     static final LazyResolution<Class<?>> PARENT_CLASS = new LazyResolution<>(
             "javafx.scene.Parent",
             () -> forNameAnyLoader("javafx.scene.Parent"));
-
     static final LazyResolution<Method> WEBVIEW_GET_ENGINE = new LazyResolution<>(
             "WebView.getEngine()",
             () -> WEBVIEW_CLASS.get().getMethod("getEngine"));
-
     static final LazyResolution<Method> PARENT_GET_CHILDREN = new LazyResolution<>(
             "Parent.getChildrenUnmodifiable()",
             () -> PARENT_CLASS.get().getMethod("getChildrenUnmodifiable"));
-
     static final LazyResolution<Method> WEBENGINE_EXECUTE_SCRIPT = new LazyResolution<>(
             "WebEngine.executeScript(String)",
             () -> forNameAnyLoader("javafx.scene.web.WebEngine").getMethod("executeScript", String.class));
-
     static final LazyResolution<Method> WEBENGINE_GET_LOAD_WORKER = new LazyResolution<>(
             "WebEngine.getLoadWorker()",
             () -> forNameAnyLoader("javafx.scene.web.WebEngine").getMethod("getLoadWorker"));
-
     static final LazyResolution<Method> WORKER_STATE_PROPERTY = new LazyResolution<>(
             "javafx.concurrent.Worker.stateProperty()",
             () -> forNameAnyLoader("javafx.concurrent.Worker").getMethod("stateProperty"));
-
     static final LazyResolution<Class<?>> WORKER_STATE_CLASS = new LazyResolution<>(
             "javafx.concurrent.Worker$State",
             () -> forNameAnyLoader("javafx.concurrent.Worker$State"));
 
-    /** O enum constant {@code Worker.State.SUCCEEDED}, resolvido e memorizado uma única vez. */
     static final LazyResolution<Object> WORKER_STATE_SUCCEEDED = new LazyResolution<>(
             "javafx.concurrent.Worker$State.SUCCEEDED",
             () -> {
@@ -67,23 +54,22 @@ final class FXCompat {
                 }
                 throw new NoSuchFieldException("SUCCEEDED constant not found on Worker.State");
             });
-
     static final LazyResolution<Class<?>> CHANGE_LISTENER_CLASS = new LazyResolution<>(
             "javafx.beans.value.ChangeListener",
             () -> forNameAnyLoader("javafx.beans.value.ChangeListener"));
-
     static final LazyResolution<Method> OBSERVABLE_VALUE_ADD_LISTENER = new LazyResolution<>(
             "javafx.beans.value.ObservableValue.addListener(ChangeListener)",
             () -> forNameAnyLoader("javafx.beans.value.ObservableValue")
                     .getMethod("addListener", CHANGE_LISTENER_CLASS.get()));
-
     static final LazyResolution<Method> JSOBJECT_SET_MEMBER = new LazyResolution<>(
             "JSObject.setMember(String, Object)",
             () -> forNameAnyLoader("netscape.javascript.JSObject").getMethod("setMember", String.class, Object.class));
-
     static final LazyResolution<Method> JSOBJECT_CALL = new LazyResolution<>(
             "JSObject.call(String, Object[])",
             () -> forNameAnyLoader("netscape.javascript.JSObject").getMethod("call", String.class, Object[].class));
+
+    private FXCompat() {
+    }
 
     static void runOnFxThreadOrDirect(Runnable task) {
         Method runLater = PLATFORM_RUN_LATER.get();
@@ -120,7 +106,7 @@ final class FXCompat {
 
             Object listenerProxy = Proxy.newProxyInstance(
                     changeListenerClass.getClassLoader(),
-                    new Class<?>[]{ changeListenerClass },
+                    new Class<?>[]{changeListenerClass},
                     (proxy, method, args) -> {
                         switch (method.getName()) {
                             case "changed" -> {

@@ -93,7 +93,7 @@ public final class VirtualRenameAction {
     }
 
     static String promptRenameVirtualFolderName(MCreator mcreator, VirtualFolderStore store, String parent, String currentName,
-                                                 String progress, InvalidNameResolver nameResolver) {
+                                                String progress, InvalidNameResolver nameResolver) {
         String prefill = currentName;
         while (true) {
             String hint = progress + "  " + L10N.t("plugin.photon.resourcemenu.rename.input.message") + "\n"

@@ -16,25 +16,13 @@ public final class PluginMetadata {
     private static final String PLUGIN_JSON_PATH = "/plugin.json";
     private static final String PHOTON_PLUGIN_YAML_PATH = "/apis/photon_plugin.yaml";
     private static final String UNKNOWN = "unknown";
-    private static final Pattern PLUGIN_VERSION_PATTERN = Pattern.compile("\\\"info\\\"\\s*:\\s*\\{.*?\\\"version\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"",Pattern.DOTALL);
+    private static final Pattern PLUGIN_VERSION_PATTERN = Pattern.compile("\\\"info\\\"\\s*:\\s*\\{.*?\\\"version\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"", Pattern.DOTALL);
     private static final Pattern TOP_LEVEL_YAML_KEY_PATTERN = Pattern.compile("(?m)^([A-Za-z0-9_.-]+):\\s*$");
     private static final Pattern PHOTON_DEPENDENCY_PATTERN = dependencyPattern("com\\.lowdragmc\\.photon");
     private static final Pattern LDLIB_DEPENDENCY_PATTERN = dependencyPattern("com\\.lowdragmc\\.ldlib2?");
     private static final Map<String, ApiVersions> API_VERSIONS_CACHE = new ConcurrentHashMap<>();
     private static volatile String pluginVersion;
     private static volatile Optional<String> pluginYaml;
-    public record ApiVersions(String photonVersion, String ldLibVersion) {
-        private static final ApiVersions UNKNOWN_VERSIONS = new ApiVersions(UNKNOWN, UNKNOWN);
-
-        public ApiVersions {
-            photonVersion = normalizeVersion(photonVersion);
-            ldLibVersion = normalizeVersion(ldLibVersion);
-        }
-
-        public boolean isUnknown() {
-            return this.equals(UNKNOWN_VERSIONS);
-        }
-    }
 
     private PluginMetadata() {
         throw new AssertionError("Utility class must not be instantiated");
@@ -157,6 +145,19 @@ public final class PluginMetadata {
     private static void logMissingDependency(String flavorKey, String dependency, String version) {
         if (version == null) {
             Log.warn("Could not find a '%s' dependency coordinate inside the '%s:' block", dependency, flavorKey);
+        }
+    }
+
+    public record ApiVersions(String photonVersion, String ldLibVersion) {
+        private static final ApiVersions UNKNOWN_VERSIONS = new ApiVersions(UNKNOWN, UNKNOWN);
+
+        public ApiVersions {
+            photonVersion = normalizeVersion(photonVersion);
+            ldLibVersion = normalizeVersion(ldLibVersion);
+        }
+
+        public boolean isUnknown() {
+            return this.equals(UNKNOWN_VERSIONS);
         }
     }
 }

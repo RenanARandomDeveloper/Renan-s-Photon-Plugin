@@ -58,6 +58,11 @@
       "Multi",
       "State"
     ],
+    "repeating_fields": [
+      {
+        "name": "RequiredValues"
+      }
+    ],
     "dependencies": [
       {
         "name": "world",

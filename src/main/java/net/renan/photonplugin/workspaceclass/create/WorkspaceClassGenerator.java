@@ -9,6 +9,8 @@ import net.mcreator.workspace.Workspace;
 import net.mcreator.workspace.settings.WorkspaceSettings;
 import net.renan.photonplugin.log.Log;
 import net.renan.photonplugin.workspaceclass.WorkspaceConstants;
+import net.renan.photonplugin.workspaceclass.WorkspaceOperationLock;
+import net.renan.photonplugin.workspaceclass.WorkspacePaths;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -16,10 +18,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class WorkspaceClassGenerator {
 
@@ -29,6 +29,13 @@ public abstract class WorkspaceClassGenerator {
     protected WorkspaceClassGenerator(MCreator mcreator, String templateRoot) {
         this.mcreator = mcreator;
         this.freemarkerConfig = buildFreemarkerConfiguration(templateRoot);
+    }
+
+    private static String toJavaModName(String modID) {
+        if (modID.isEmpty()) {
+            return modID;
+        }
+        return Character.toTitleCase(modID.charAt(0)) + modID.substring(1);
     }
 
     private Configuration buildFreemarkerConfiguration(String templateRoot) {
@@ -77,13 +84,18 @@ public abstract class WorkspaceClassGenerator {
 
         String javaModName = toJavaModName(modID);
 
-        Path workspaceFolder = workspace.getWorkspaceFolder().toPath().normalize();
-        Path targetPackageDir = workspaceFolder.resolve("src/main/java").resolve(basePackage.replace('.', '/'))
-                .resolve(WorkspaceConstants.TARGET_SUB_PACKAGE).normalize();
+        Path targetPackageDir;
+        try {
+            targetPackageDir = WorkspacePaths.resolveTargetPackageDir(workspace, settings);
+        } catch (WorkspacePaths.InvalidWorkspacePathException e) {
+            Log.error(e.getMessage());
+            result.addError(e.getMessage());
+            return result;
+        }
 
-        if (!targetPackageDir.startsWith(workspaceFolder)) {
-            Log.error("Resolved target package directory '" + targetPackageDir + "' escapes the workspace folder.");
-            result.addError("Invalid base package: resolved output path escapes the workspace folder.");
+        if (targetPackageDir == null) {
+            Log.error("Could not resolve the workspace folder, aborting.");
+            result.addError("Could not resolve the workspace folder.");
             return result;
         }
 
@@ -91,15 +103,25 @@ public abstract class WorkspaceClassGenerator {
         dataModel.put("package", basePackage);
         dataModel.put("modid", modID);
         dataModel.put("JavaModName", javaModName);
-
-        Log.info("Generating photon_plugin package at: %s", targetPackageDir);
-
-        for (String baseClassName : WorkspaceConstants.getBaseClassNames()) {
-            writeFromTemplate(baseClassName, targetPackageDir, dataModel, result);
+        String lockKey = WorkspacePaths.sessionKey(this.mcreator);
+        ReentrantLock lock = lockKey != null ? WorkspaceOperationLock.forKey(lockKey) : null;
+        if (lock != null) {
+            lock.lock();
         }
+        try {
+            Log.info("Generating photon_plugin package at: %s", targetPackageDir);
 
-        Log.info("Done. Written: %d, rewritten: %d, errors: %d",
-                result.getWrittenCount(), result.getRewrittenCount(), result.getErrors().size());
+            for (String baseClassName : WorkspaceConstants.getBaseClassNames()) {
+                writeFromTemplate(baseClassName, targetPackageDir, dataModel, result);
+            }
+
+            Log.info("Done. Written: %d, rewritten: %d, errors: %d",
+                    result.getWrittenCount(), result.getRewrittenCount(), result.getErrors().size());
+        } finally {
+            if (lock != null) {
+                lock.unlock();
+            }
+        }
 
         return result;
     }
@@ -141,27 +163,45 @@ public abstract class WorkspaceClassGenerator {
         }
     }
 
-    private static String toJavaModName(String modID) {
-        if (modID.isEmpty()) {
-            return modID;
-        }
-        return Character.toTitleCase(modID.charAt(0)) + modID.substring(1);
-    }
-
     public static final class GenerationResult {
         private final List<Path> writtenFiles = new ArrayList<>();
         private final List<Path> rewrittenFiles = new ArrayList<>();
         private final List<String> errors = new ArrayList<>();
 
-        void addWritten(Path file) { this.writtenFiles.add(file); }
-        void addRewritten(Path file) { this.rewrittenFiles.add(file); }
-        void addError(String message) { this.errors.add(message); }
+        void addWritten(Path file) {
+            this.writtenFiles.add(file);
+        }
 
-        public int getWrittenCount() { return this.writtenFiles.size(); }
-        public int getRewrittenCount() { return this.rewrittenFiles.size(); }
-        public List<Path> getWrittenFiles() { return this.writtenFiles; }
-        public List<Path> getRewrittenFiles() { return this.rewrittenFiles; }
-        public List<String> getErrors() { return this.errors; }
-        public boolean hasErrors() { return !this.errors.isEmpty(); }
+        void addRewritten(Path file) {
+            this.rewrittenFiles.add(file);
+        }
+
+        void addError(String message) {
+            this.errors.add(message);
+        }
+
+        public int getWrittenCount() {
+            return this.writtenFiles.size();
+        }
+
+        public int getRewrittenCount() {
+            return this.rewrittenFiles.size();
+        }
+
+        public List<Path> getWrittenFiles() {
+            return Collections.unmodifiableList(this.writtenFiles);
+        }
+
+        public List<Path> getRewrittenFiles() {
+            return Collections.unmodifiableList(this.rewrittenFiles);
+        }
+
+        public List<String> getErrors() {
+            return Collections.unmodifiableList(this.errors);
+        }
+
+        public boolean hasErrors() {
+            return !this.errors.isEmpty();
+        }
     }
 }

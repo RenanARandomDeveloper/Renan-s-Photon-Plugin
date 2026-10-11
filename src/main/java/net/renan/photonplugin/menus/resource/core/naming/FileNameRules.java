@@ -3,6 +3,7 @@ package net.renan.photonplugin.menus.resource.core.naming;
 import net.mcreator.ui.init.L10N;
 
 import java.io.File;
+import java.text.Normalizer;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -58,9 +59,12 @@ public final class FileNameRules {
 
     public static String sanitizeStrictFileName(String name) {
         if (name == null) return "";
-        StringBuilder sb = new StringBuilder(name.length());
-        for (int i = 0; i < name.length(); i++) {
-            char lower = Character.toLowerCase(name.charAt(i));
+        String decomposed = Normalizer.normalize(name, Normalizer.Form.NFD);
+        StringBuilder sb = new StringBuilder(decomposed.length());
+        for (int i = 0; i < decomposed.length(); i++) {
+            char c = decomposed.charAt(i);
+            if (Character.getType(c) == Character.NON_SPACING_MARK) continue;
+            char lower = Character.toLowerCase(c);
             sb.append(isStrictAllowedChar(lower) ? lower : '_');
         }
         return sb.toString();

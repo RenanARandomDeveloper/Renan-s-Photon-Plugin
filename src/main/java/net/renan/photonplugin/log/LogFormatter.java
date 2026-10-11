@@ -9,6 +9,7 @@ final class LogFormatter {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String LOG_PACKAGE_PREFIX = LogFormatter.class.getPackageName();
+    private static final StackWalker STACK_WALKER = StackWalker.getInstance();
 
     private LogFormatter() {
     }
@@ -34,7 +35,7 @@ final class LogFormatter {
     }
 
     static String getCallerClassName() {
-        return StackWalker.getInstance().walk(stream -> stream
+        return STACK_WALKER.walk(stream -> stream
                 .map(StackWalker.StackFrame::getClassName)
                 .filter(className -> !isInLogPackage(className))
                 .findFirst()

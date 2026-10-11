@@ -30,7 +30,8 @@ public final class ResourceMenuResource {
 
     private static final String RESOURCE_EXTENSION = ".nbt";
 
-    private ResourceMenuResource() {}
+    private ResourceMenuResource() {
+    }
 
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDir) {
@@ -39,8 +40,11 @@ public final class ResourceMenuResource {
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDir, boolean restrictOperations) {
         FXBrowserPanel browser = new FXBrowserPanel(List.of(targetDir), RESOURCE_EXTENSION, file -> {
-            try { return scaleIconTo(UIRES.get("64px_photon.resource"), 64); }
-            catch (Exception ignored) { return null; }
+            try {
+                return scaleIconTo(UIRES.get("64px_photon.resource"), 64);
+            } catch (Exception ignored) {
+                return null;
+            }
         });
 
         browser.setDragAndDropEnabled(!restrictOperations);
@@ -105,7 +109,8 @@ public final class ResourceMenuResource {
         Action originalAction = browser.getGrid().getActionMap().get("photon.deleteSelected");
         if (originalAction == null) return;
         browser.getGrid().getActionMap().put("photon.deleteSelected", new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) {
+            @Override
+            public void actionPerformed(ActionEvent e) {
                 if (!browser.getSelectedFolders().isEmpty()) {
                     JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.resource.folder.operation.disabled"),
                             L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.WARNING_MESSAGE);

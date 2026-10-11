@@ -17,6 +17,11 @@ public final class RemoveFXEntityServer {
     private RemoveFXEntityServer() {
     }
 
+    private static ResourceLocation resolveEffectLocation(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return name.indexOf(':') >= 0 ? ResourceLocation.tryParse(name) : ResourceLocation.tryParse("photon:" + name);
+    }
+
     public static RemoveBuilder destroy(Entity entity) {
         return new RemoveBuilder(entity != null ? List.of(entity) : null);
     }
@@ -74,11 +79,10 @@ public final class RemoveFXEntityServer {
 
                 ResourceLocation resolvedLocation = null;
                 if (this.effectName != null && !this.effectName.isEmpty()) {
-                    try {
-                        resolvedLocation = ResourceLocation.fromNamespaceAndPath("photon", this.effectName);
-                    } catch (Exception e) {
-                        LOGGER.error("[RemoveFXEntityServer] Invalid effect name '{}': {}",
-                                this.effectName, e.getMessage(), e);
+                    resolvedLocation = resolveEffectLocation(this.effectName);
+                    if (resolvedLocation == null) {
+                        LOGGER.error("[RemoveFXEntityServer] Invalid effect name '{}' could not be parsed into a ResourceLocation.",
+                                this.effectName);
                         return;
                     }
                 }

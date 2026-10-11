@@ -21,8 +21,8 @@ public final class AboutDialog {
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         DialogUtils.closeOnEscape(dialog);
 
-        JPanel content = new JPanel(new BorderLayout(15, 15));
-        content.setBorder(BorderFactory.createEmptyBorder(18, 18, 15, 18));
+        JPanel content = new JPanel(new BorderLayout(16, 16));
+        content.setBorder(BorderFactory.createEmptyBorder(20, 20, 16, 20));
 
         Icon dialogIcon = loadIcon("64px_photon.photonplugin", 64);
         JLabel iconLabel = new JLabel(dialogIcon);
@@ -33,10 +33,12 @@ public final class AboutDialog {
         }
 
         JPanel textPanel = new JPanel();
+        textPanel.setOpaque(false);
         textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
 
         JLabel title = new JLabel("Renan's Photon Plugin");
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        title.setForeground(PhotonTheme.accentPressed());
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
 
         String pluginVersionText = L10N.t("plugin.photon.workspacemenu.about.plugin_version",
@@ -54,18 +56,21 @@ public final class AboutDialog {
         textPanel.add(Box.createVerticalStrut(10));
         textPanel.add(pluginVersionLabel);
         textPanel.add(authorLabel);
-        textPanel.add(Box.createVerticalStrut(8));
+        textPanel.add(Box.createVerticalStrut(10));
         JSeparator separator = new JSeparator();
         separator.setAlignmentX(Component.LEFT_ALIGNMENT);
+        separator.setForeground(PhotonTheme.cardBorder());
         textPanel.add(separator);
-        textPanel.add(Box.createVerticalStrut(8));
+        textPanel.add(Box.createVerticalStrut(10));
         textPanel.add(componentVersionLabel);
         textPanel.add(libVersionLabel);
 
         content.add(textPanel, BorderLayout.CENTER);
 
-        JButton copyButton = new JButton(L10N.t("plugin.photon.workspacemenu.about.copy_info"));
-        JButton closeButton = new JButton(L10N.t("plugin.photon.workspacemenu.close"));
+        JButton copyButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.about.copy_info"),
+                PhotonTheme.ButtonVariant.PRIMARY);
+        JButton closeButton = PhotonTheme.button(L10N.t("plugin.photon.workspacemenu.close"),
+                PhotonTheme.ButtonVariant.NEUTRAL);
 
         String clipboardText = String.join(System.lineSeparator(), "Renan's Photon Plugin", pluginVersionText,
                 authorText, componentVersionText, libVersionText);
@@ -73,6 +78,7 @@ public final class AboutDialog {
         closeButton.addActionListener(e -> dialog.dispose());
 
         JPanel bottomPanel = DialogUtils.bottomButtonRow(copyButton, closeButton);
+        bottomPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
         content.add(bottomPanel, BorderLayout.SOUTH);
 
         dialog.setContentPane(content);
@@ -87,6 +93,8 @@ public final class AboutDialog {
     private static JLabel infoLine(String text) {
         JLabel label = new JLabel(text);
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        label.setForeground(PhotonTheme.textForeground());
+        label.setFont(label.getFont().deriveFont(Font.PLAIN, 12f));
         return label;
     }
 

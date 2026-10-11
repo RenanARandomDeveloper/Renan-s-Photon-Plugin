@@ -69,6 +69,22 @@ public class Photon extends JavaPlugin {
         }
     }
 
+    private static boolean isPhotonDependency(MCreator mcreator) {
+        return mcreator.getWorkspace().getWorkspaceSettings().getMCreatorDependencies().contains("photon_plugin");
+    }
+
+    private static void info(String message) {
+        System.out.println("[Photon] " + message);
+    }
+
+    private static void warn(String message) {
+        System.out.println("[Photon] [WARN] " + message);
+    }
+
+    private static void error(String message, Throwable t) {
+        LOG.log(Level.SEVERE, "[Photon] " + message, t);
+    }
+
     private void activateFlavor(MCreator mcreator) {
         try {
             Generator generator = mcreator.getGenerator();
@@ -138,21 +154,5 @@ public class Photon extends JavaPlugin {
         } finally {
             Log.releaseWorkspace(mcFolder);
         }
-    }
-
-    private static boolean isPhotonDependency(MCreator mcreator) {
-        return mcreator.getWorkspace().getWorkspaceSettings().getMCreatorDependencies().contains("photon_plugin");
-    }
-
-    private static void info(String message) {
-        System.out.println("[Photon] " + message);
-    }
-
-    private static void warn(String message) {
-        System.out.println("[Photon] [WARN] " + message);
-    }
-
-    private static void error(String message, Throwable t) {
-        LOG.log(Level.SEVERE, "[Photon] " + message, t);
     }
 }

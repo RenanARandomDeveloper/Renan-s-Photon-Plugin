@@ -1,19 +1,16 @@
 package net.renan.photonplugin.menus.resource.core.actions;
 
-import net.mcreator.io.FileIO;
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
 import net.renan.photonplugin.menus.resource.core.fs.FileOps;
-import net.renan.photonplugin.menus.resource.core.support.EdtSupport;
-import net.renan.photonplugin.menus.resource.core.support.MenuLog;
-import net.renan.photonplugin.menus.resource.core.support.MenuMessages;
-import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.support.*;
 
 import javax.swing.*;
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 public final class ExportAction {
@@ -34,14 +31,12 @@ public final class ExportAction {
                 return;
             }
 
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            if (chooser.showSaveDialog(mcreator) != JFileChooser.APPROVE_OPTION) {
+            File dest = DirectoryDialogs.chooseDirectory(mcreator);
+            if (dest == null) {
                 JOptionPane.showMessageDialog(mcreator, L10N.t("plugin.photon.resourcemenu.operation.canceled"));
                 return;
             }
 
-            File dest = chooser.getSelectedFile();
             int conflictCount = BulkConflictResolver.countConflicts(fileTargets, dest)
                     + BulkConflictResolver.countConflicts(folderTargets, dest);
             BulkConflictResolver resolver = (conflictCount > 0) ? new BulkConflictResolver(conflictCount) : null;
@@ -62,15 +57,16 @@ public final class ExportAction {
                         }
                         if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
                         destFile = resolution.targetFile();
-                        if (destFile.exists()) destFile.delete();
-                        FileIO.copyFile(f, destFile);
+                        FileOps.copyReplacing(f, destFile);
                         counts[0]++;
                     }
 
                     for (File folder : folderTargets) {
                         if (cancelAllHolder[0]) break;
                         File destFolder = new File(dest, folder.getName());
-                        boolean folderRenamed = false;
+                        if (FileOps.isInside(dest, folder)) {
+                            throw new IOException("Destination is inside the exported folder: " + folder.getName());
+                        }
                         if (destFolder.exists()) {
                             ConflictResolution resolution = (resolver != null) ? resolver.resolve(mcreator, destFolder) : BulkConflictResolver.checkOverwrite(mcreator, destFolder);
                             if (resolution.action() == ConflictResolution.ACTION_CANCEL) {
@@ -78,9 +74,14 @@ public final class ExportAction {
                                 break;
                             }
                             if (resolution.action() == ConflictResolution.ACTION_SKIP) continue;
-                            folderRenamed = !resolution.targetFile().equals(destFolder);
                             destFolder = resolution.targetFile();
-                            if (destFolder.exists()) FileOps.deleteRecursively(destFolder);
+                        }
+                        if (FileOps.isSameFile(folder, destFolder)) {
+                            counts[1]++;
+                            continue;
+                        }
+                        if (FileOps.isInside(folder, destFolder)) {
+                            throw new IOException("Destination contains the exported folder: " + folder.getName());
                         }
                         boolean recursive = true;
                         boolean hasSubDirs = false;
@@ -94,7 +95,7 @@ public final class ExportAction {
                             }
                         }
                         if (hasSubDirs) {
-                            int choice = EdtSupport.onEdt(() -> JOptionPane.showConfirmDialog(
+                            int choice = EdtSupport.onEdtChoice(() -> JOptionPane.showConfirmDialog(
                                     mcreator,
                                     L10N.t("plugin.photon.resourcemenu.export.folder.has.subfolders", browser.getFolderName(folder)),
                                     L10N.t("plugin.photon.resourcemenu.operation.question"),
@@ -106,17 +107,12 @@ public final class ExportAction {
                             }
                             recursive = (choice == JOptionPane.YES_OPTION);
                         }
-                        if (recursive) {
-                            if (folderRenamed) {
-                                if (!destFolder.exists()) destFolder.mkdirs();
-                                FileOps.copyFolderContents(folder, destFolder);
-                            } else {
-                                FileOps.copyDirectoryRecursively(folder, dest);
-                            }
-                        } else {
-                            if (!destFolder.exists()) destFolder.mkdirs();
-                            FileOps.copyFolderContentsShallow(folder, destFolder);
-                        }
+                        File targetFolder = destFolder;
+                        boolean fullCopy = recursive;
+                        FileOps.replaceDirectory(targetFolder, () -> {
+                            if (fullCopy) FileOps.copyFolderContents(folder, targetFolder);
+                            else FileOps.copyFolderContentsShallow(folder, targetFolder);
+                        });
                         counts[1]++;
                     }
                 } catch (Exception ex) {

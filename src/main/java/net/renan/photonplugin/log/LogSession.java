@@ -3,37 +3,35 @@ package net.renan.photonplugin.log;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 
 final class LogSession {
 
-    private static final class QueuedLine {
-        final String line;
-        final boolean forceFlush;
-
-        QueuedLine(String line, boolean forceFlush) {
-            this.line = line;
-            this.forceFlush = forceFlush;
-        }
-    }
-
-    private static final QueuedLine SHUTDOWN_SENTINEL = new QueuedLine(null, false);
-
+    private static final QueuedLine SHUTDOWN_SENTINEL = new QueuedLine(null, false, null);
     private final List<String> buffer = Collections.synchronizedList(new LinkedList<>());
     private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
     private final BlockingQueue<QueuedLine> writeQueue = new LinkedBlockingQueue<>();
     private final Object writerLock = new Object();
-
+    private final ThreadLocal<Boolean> notifying = ThreadLocal.withInitial(() -> false);
     private volatile File logDirectory;
     private volatile File logsFolder;
     private volatile File logFile;
     private volatile boolean released;
-
     private long totalLinesRecorded = 0;
     private Thread writerThread;
     private boolean writerRunning;
+
+    private static void closeQuietly(Writer writer) {
+        if (writer == null) {
+            return;
+        }
+        try {
+            writer.flush();
+            writer.close();
+        } catch (IOException e) {
+            LogInternal.LOGGER.error("[Photon] Failed to close log file writer", e);
+        }
+    }
 
     File getLogDirectory() {
         return logDirectory;
@@ -114,15 +112,20 @@ final class LogSession {
     }
 
     private void notifyListeners() {
-        if (listeners.isEmpty()) {
+        if (listeners.isEmpty() || Boolean.TRUE.equals(notifying.get())) {
             return;
         }
-        for (Runnable listener : listeners) {
-            try {
-                listener.run();
-            } catch (Exception e) {
-                LogInternal.LOGGER.error("[Photon] Log listener threw an exception", e);
+        notifying.set(true);
+        try {
+            for (Runnable listener : listeners) {
+                try {
+                    listener.run();
+                } catch (Throwable t) {
+                    LogInternal.LOGGER.error("[Photon] Log listener threw an exception", t);
+                }
             }
+        } finally {
+            notifying.set(false);
         }
     }
 
@@ -134,7 +137,24 @@ final class LogSession {
                 writerThread.setDaemon(true);
                 writerThread.start();
             }
-            writeQueue.add(new QueuedLine(line, forceFlush));
+            writeQueue.add(new QueuedLine(line, forceFlush, null));
+        }
+    }
+
+    void flushSync(long timeoutMillis) {
+        boolean hasWriter;
+        synchronized (writerLock) {
+            hasWriter = writerRunning;
+        }
+        if (!hasWriter) {
+            return;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        writeQueue.add(new QueuedLine(null, true, latch));
+        try {
+            latch.await(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -155,6 +175,21 @@ final class LogSession {
 
                 if (item == SHUTDOWN_SENTINEL) {
                     break;
+                }
+
+                if (item.line == null) {
+                    if (writer != null) {
+                        try {
+                            writer.flush();
+                        } catch (IOException e) {
+                            LogInternal.LOGGER.error("[Photon] Failed to flush log file writer", e);
+                        }
+                        linesSinceFlush = 0;
+                    }
+                    if (item.flushSignal != null) {
+                        item.flushSignal.countDown();
+                    }
+                    continue;
                 }
 
                 File target = logFile;
@@ -195,34 +230,26 @@ final class LogSession {
         }
     }
 
-    private static void closeQuietly(Writer writer) {
-        if (writer == null) {
-            return;
-        }
-        try {
-            writer.flush();
-            writer.close();
-        } catch (IOException e) {
-            LogInternal.LOGGER.error("[Photon] Failed to close log file writer", e);
-        }
-    }
-
     void closeWriter() {
+        Thread threadToJoin;
         synchronized (writerLock) {
             if (!writerRunning) {
                 return;
             }
             writerRunning = false;
             writeQueue.add(SHUTDOWN_SENTINEL);
-            Thread thread = writerThread;
+            threadToJoin = writerThread;
             writerThread = null;
-            if (thread != null) {
-                try {
-                    thread.join(2000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+        }
+        if (threadToJoin != null) {
+            try {
+                threadToJoin.join(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
+    }
+
+    private record QueuedLine(String line, boolean forceFlush, CountDownLatch flushSignal) {
     }
 }

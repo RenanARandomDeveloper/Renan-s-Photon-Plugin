@@ -10,30 +10,14 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class BackupService {
-    public enum BackupType {
-        MANUAL("manual"),
-        AUTOMATIC("automatically");
-
-        private final String folderName;
-
-        BackupType(String folderName) {
-            this.folderName = folderName;
-        }
-
-        public String getFolderName() {
-            return folderName;
-        }
-    }
-
     private static final int DEFAULT_MAX_BACKUPS = 10;
-
     private static final Map<BackupType, Integer> MAX_BACKUPS_PER_TYPE = new EnumMap<>(BackupType.class);
+    private static final Map<String, BackupService> INSTANCES = new ConcurrentHashMap<>();
+
     static {
         MAX_BACKUPS_PER_TYPE.put(BackupType.MANUAL, DEFAULT_MAX_BACKUPS);
         MAX_BACKUPS_PER_TYPE.put(BackupType.AUTOMATIC, DEFAULT_MAX_BACKUPS);
     }
-
-    private static final Map<String, BackupService> INSTANCES = new ConcurrentHashMap<>();
 
     private final File workspaceFolder;
     private final File backupsRootFolder;
@@ -79,7 +63,7 @@ public final class BackupService {
         }
         BackupService instance = INSTANCES.remove(key);
         if (instance != null) {
-            instance.stopAutoBackup();
+            instance.watcher.stop(true);
         }
     }
 
@@ -92,6 +76,10 @@ public final class BackupService {
         } catch (IOException e) {
             return workspaceFolder.getAbsolutePath();
         }
+    }
+
+    public static LocalDateTime getBackupCreationDate(File file) {
+        return BackupNaming.getBackupCreationDate(file);
     }
 
     public void startAutoBackup(List<Path> rootsToWatch) {
@@ -143,6 +131,14 @@ public final class BackupService {
         List<Path> rootsToResume = watcher.getWatchedRoots();
         stopAutoBackup();
         try {
+            try {
+                File safetySnapshot = createManualBackup(rootsToResume);
+                Log.info("Created a safety backup at %s before restoring %s",
+                        safetySnapshot.getAbsolutePath(), backup.getAbsolutePath());
+            } catch (IOException e) {
+                Log.warn("Could not create a safety backup before restoring %s (%s); proceeding with the "
+                        + "restore anyway.", backup.getAbsolutePath(), e.getMessage());
+            }
             BackupOperations.restoreBackup(backup, rootsToResume);
         } finally {
             startAutoBackup(rootsToResume);
@@ -161,7 +157,18 @@ public final class BackupService {
             return result;
         }
 
-        result.addAll(Arrays.asList(entries));
+        Map<String, File> byBaseName = new LinkedHashMap<>();
+        for (File entry : entries) {
+            String baseName = entry.getName().replaceAll("(?i)\\.zip$", "");
+            File existing = byBaseName.get(baseName);
+            boolean entryIsZip = entry.getName().toLowerCase(Locale.ROOT).endsWith(".zip");
+            boolean existingIsZip = existing != null && existing.getName().toLowerCase(Locale.ROOT).endsWith(".zip");
+            if (existing == null || (entryIsZip && !existingIsZip)) {
+                byBaseName.put(baseName, entry);
+            }
+        }
+
+        result.addAll(byBaseName.values());
         result.sort(Comparator.comparing(BackupNaming::getBackupCreationDate).reversed());
         return result;
     }
@@ -172,10 +179,6 @@ public final class BackupService {
 
     public synchronized int deleteBackups(List<File> selectedBackups) throws IOException {
         return BackupOperations.deleteBackups(selectedBackups);
-    }
-
-    public static LocalDateTime getBackupCreationDate(File file) {
-        return BackupNaming.getBackupCreationDate(file);
     }
 
     private void enforceBackupLimit(BackupType type) {
@@ -202,5 +205,20 @@ public final class BackupService {
 
     public File getWorkspaceFolder() {
         return workspaceFolder;
+    }
+
+    public enum BackupType {
+        MANUAL("manual"),
+        AUTOMATIC("automatically");
+
+        private final String folderName;
+
+        BackupType(String folderName) {
+            this.folderName = folderName;
+        }
+
+        public String getFolderName() {
+            return folderName;
+        }
     }
 }
