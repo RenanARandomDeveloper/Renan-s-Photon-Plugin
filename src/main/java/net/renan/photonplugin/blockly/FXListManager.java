@@ -97,7 +97,7 @@ public final class FXListManager {
         CopyOnWriteArrayList<String> fxEntries = entriesFor(workspaceRoot);
         if (fxEntries == null) return;
 
-        List<File> fxFiles = listFilesRecursively(fxDir, FX_EXTENSION);
+        List<File> fxFiles = listFilesInDirectory(fxDir, FX_EXTENSION);
         if (fxFiles == null) {
             Log.warn("FX directory not found, not a directory, or failed to list: %s", fxDir);
             return;
@@ -121,7 +121,7 @@ public final class FXListManager {
         Map<String, List<String>> packSources = fxPackSourcesFor(workspaceRoot);
         if (fxEntries == null || packSources == null) return;
 
-        List<File> packFiles = listFilesRecursively(fxPackDir, FXPACK_EXTENSION);
+        List<File> packFiles = listFilesInDirectory(fxPackDir, FXPACK_EXTENSION);
         if (packFiles == null) {
             Log.warn("FX Pack directory not found, not a directory, or failed to list: %s", fxPackDir);
             return;
@@ -371,21 +371,14 @@ public final class FXListManager {
         return found;
     }
 
-    private static List<File> listFilesRecursively(File root, String extension) {
+    private static List<File> listFilesInDirectory(File root, String extension) {
         if (root == null || !root.isDirectory()) return null;
         List<File> result = new ArrayList<>();
-        Deque<File> stack = new ArrayDeque<>();
-        stack.push(root);
-        while (!stack.isEmpty()) {
-            File dir = stack.pop();
-            File[] children = dir.listFiles();
-            if (children == null) return null;
-            for (File child : children) {
-                if (child.isDirectory()) {
-                    stack.push(child);
-                } else if (child.getName().endsWith(extension)) {
-                    result.add(child);
-                }
+        File[] children = root.listFiles();
+        if (children == null) return null;
+        for (File child : children) {
+            if (child.isFile() && child.getName().endsWith(extension)) {
+                result.add(child);
             }
         }
         return result;

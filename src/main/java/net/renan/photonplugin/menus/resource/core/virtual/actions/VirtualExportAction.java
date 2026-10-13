@@ -1,16 +1,17 @@
-package net.renan.photonplugin.menus.resource.common.fx.actions;
+package net.renan.photonplugin.menus.resource.core.virtual.actions;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualBrowserSupport;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserPanel;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
 import net.renan.photonplugin.menus.resource.core.fs.FileOps;
 import net.renan.photonplugin.menus.resource.core.support.DirectoryDialogs;
 import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserSupport;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualFolderStore;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualResourceProfile;
 
 import javax.swing.*;
 import java.io.File;
@@ -30,7 +31,8 @@ public final class VirtualExportAction {
     private VirtualExportAction() {
     }
 
-    public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store) {
+    public static JButton build(MCreator mcreator, VirtualBrowserPanel browser, VirtualFolderStore store,
+                                VirtualResourceProfile profile) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.export.files"), "16px_photon.export");
         btn.addActionListener(e -> {
             List<File> fileTargets = browser.getSelectedFiles();
@@ -107,7 +109,7 @@ public final class VirtualExportAction {
                 }
             }, () -> {
                 if (failure[0] != null) {
-                    MenuLog.error("Failed to export selected FX resources", failure[0]);
+                    MenuLog.error("Failed to export selected " + profile.resourceLabel() + " resources", failure[0]);
                     JOptionPane.showMessageDialog(mcreator,
                             L10N.t("plugin.photon.resourcemenu.export.failed") + failure[0].getMessage(),
                             L10N.t("plugin.photon.resourcemenu.operation.error"), JOptionPane.ERROR_MESSAGE);

@@ -1,12 +1,12 @@
-package net.renan.photonplugin.menus.resource.common.fx.actions;
+package net.renan.photonplugin.menus.resource.core.virtual.actions;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualBrowserSupport;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserPanel;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserSupport;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualFolderStore;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -26,7 +26,7 @@ public final class VirtualMoveAction {
     private VirtualMoveAction() {
     }
 
-    public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store,
+    public static JButton build(MCreator mcreator, VirtualBrowserPanel browser, VirtualFolderStore store,
                                 Supplier<File> rootDirGetter) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.move.files"), "16px_photon.move");
         btn.addActionListener(e -> {

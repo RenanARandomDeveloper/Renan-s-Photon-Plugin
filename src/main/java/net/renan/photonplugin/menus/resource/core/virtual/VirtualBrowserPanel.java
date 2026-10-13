@@ -1,4 +1,4 @@
-package net.renan.photonplugin.menus.resource.common.fx.virtual;
+package net.renan.photonplugin.menus.resource.core.virtual;
 
 import net.mcreator.ui.component.util.ComponentUtils;
 import net.renan.photonplugin.menus.resource.core.browser.*;
@@ -15,14 +15,16 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class VirtualFXBrowserPanel extends FXBrowserPanel {
+public class VirtualBrowserPanel extends FXBrowserPanel {
 
     private final Supplier<File> rootDirGetter;
+    private final String defaultRootName;
     private VirtualFolderStore store;
 
-    public VirtualFXBrowserPanel(List<Supplier<File>> rootSuppliers, String extension,
-                                 Function<File, Icon> iconProvider) {
+    public VirtualBrowserPanel(List<Supplier<File>> rootSuppliers, String extension,
+                               Function<File, Icon> iconProvider, VirtualResourceProfile profile) {
         super(rootSuppliers, extension, iconProvider);
+        this.defaultRootName = profile.defaultRootName();
         this.rootDirGetter = (rootSuppliers != null && !rootSuppliers.isEmpty()) ? rootSuppliers.get(0) : null;
     }
 
@@ -101,7 +103,7 @@ public class VirtualFXBrowserPanel extends FXBrowserPanel {
         if (store != null && store.isVirtualDir(currentDir)) {
             breadcrumbPanel.removeAll();
 
-            String rootName = (rootDirGetter != null && rootDirGetter.get() != null) ? rootDirGetter.get().getName() : "fx";
+            String rootName = (rootDirGetter != null && rootDirGetter.get() != null) ? rootDirGetter.get().getName() : defaultRootName;
             addVirtualBreadcrumbSegment(rootName, rootDirGetter != null ? rootDirGetter.get() : null, false);
 
             String fullPath = store.virtualDirName(currentDir);

@@ -1,4 +1,4 @@
-package net.renan.photonplugin.menus.resource.common.fx.virtual;
+package net.renan.photonplugin.menus.resource.core.virtual;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -28,11 +28,12 @@ public final class VirtualFolderStore {
     private final Supplier<List<File>> allFilesSupplier;
     private final LinkedHashMap<String, List<String>> data = new LinkedHashMap<>();
 
-    public VirtualFolderStore(File workspaceFolder, Supplier<List<File>> allFilesSupplier) {
+    public VirtualFolderStore(File workspaceFolder, VirtualResourceProfile profile,
+                              Supplier<List<File>> allFilesSupplier) {
         this.allFilesSupplier = allFilesSupplier;
         File photonDir = new File(workspaceFolder, ".photon");
         photonDir.mkdirs();
-        this.storeFile = new File(photonDir, "fx_virtual_folders.json");
+        this.storeFile = new File(photonDir, profile.storeFileName());
         load();
     }
 

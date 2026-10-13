@@ -39,6 +39,7 @@ public class AssetPlacement {
     private final Path modelsDir;
     private final Path shadersDir;
     private final Map<String, Rule> rulesByExtension;
+    private final List<Path> flatDirs;
     private final ScheduledThreadPoolExecutor executor;
     private final Map<TaskKey, ScheduledFuture<?>> pending = new ConcurrentHashMap<>();
     private volatile boolean stopped;
@@ -55,11 +56,12 @@ public class AssetPlacement {
         this.resourcesDir = assetsRoot.resolve(RESOURCES_TARGET_RELATIVE_PATH);
         this.modelsDir = assetsRoot.resolve(MODELS_TARGET_RELATIVE_PATH);
         this.shadersDir = assetsRoot.resolve(SHADERS_RELATIVE_PATH);
+        this.flatDirs = List.of(fxDir, fxpacksDir);
 
         Map<String, Rule> rules = new HashMap<>();
         rules.put("fx", new Rule("effect (.fx)", fxDir, false));
         rules.put("fxproj", new Rule("effect project (.fxproj)", fxProjectsDir, true));
-        rules.put("fxpack", new Rule("effect pack (.fxpack)", fxpacksDir, true));
+        rules.put("fxpack", new Rule("effect pack (.fxpack)", fxpacksDir, false));
         rules.put("png", new Rule("texture (.png)", texturesDir, true));
         rules.put("nbt", new Rule("resource (.nbt)", resourcesDir, true));
         rules.put("obj", new Rule("model (.obj)", modelsDir, true));
@@ -200,24 +202,28 @@ public class AssetPlacement {
         return rulesByExtension.get(extension);
     }
 
-    private boolean isDirectFxChildFolder(Path dir) {
-        return fxDir.equals(dir.getParent());
+    private boolean isDirectFlatChildFolder(Path dir) {
+        Path parent = dir.getParent();
+        return parent != null && flatDirs.contains(parent);
     }
 
-    private Path illegalFxFolderOf(Path path, boolean knownFileType) {
-        if (!path.startsWith(fxDir) || path.equals(fxDir)) {
-            return null;
-        }
+    private Path illegalFlatFolderOf(Path path, boolean knownFileType) {
+        for (Path flatDir : flatDirs) {
+            if (!path.startsWith(flatDir) || path.equals(flatDir)) {
+                continue;
+            }
 
-        Path top = fxDir.resolve(fxDir.relativize(path).getName(0));
-        if (!top.equals(path)) {
-            return top;
-        }
+            Path top = flatDir.resolve(flatDir.relativize(path).getName(0));
+            if (!top.equals(path)) {
+                return top;
+            }
 
-        if (knownFileType || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-            return null;
+            if (knownFileType || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                return null;
+            }
+            return path;
         }
-        return path;
+        return null;
     }
 
     private void onWatchEvent(Path watchedDir, Path changed, WatchService.ChangeKind kind) {
@@ -240,7 +246,7 @@ public class AssetPlacement {
     private void onPathChanged(Path changed) {
         Rule rule = ruleFor(changed);
 
-        Path illegalFolder = illegalFxFolderOf(changed, rule != null);
+        Path illegalFolder = illegalFlatFolderOf(changed, rule != null);
         if (illegalFolder != null) {
             schedule(Action.FX_FOLDER, illegalFolder, DEBOUNCE_MS, 0);
             return;
@@ -328,7 +334,7 @@ public class AssetPlacement {
                 if (stopped) {
                     return FileVisitResult.TERMINATE;
                 }
-                if (isDirectFxChildFolder(dir)) {
+                if (isDirectFlatChildFolder(dir)) {
                     illegalFolders.add(dir);
                     return FileVisitResult.SKIP_SUBTREE;
                 }
@@ -418,7 +424,7 @@ public class AssetPlacement {
             return;
         }
 
-        Log.warn("Illegal subfolder detected inside 'fx' directory: %s. Moving its files out and removing it.", folder);
+        Log.warn("Illegal subfolder detected inside a flat directory ('fx' or 'fxpacks'): %s. Moving its files out and removing it.", folder);
 
         List<Path> files = new ArrayList<>();
         List<Path> directoriesBottomUp = new ArrayList<>();
@@ -434,7 +440,7 @@ public class AssetPlacement {
 
             @Override
             public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                Log.warn("Failed to access file while cleaning up 'fx' subfolder: %s. Reason: %s", file, exc.getMessage());
+                Log.warn("Failed to access file while cleaning up illegal subfolder: %s. Reason: %s", file, exc.getMessage());
                 return FileVisitResult.CONTINUE;
             }
 
@@ -468,9 +474,9 @@ public class AssetPlacement {
         }
 
         if (keptSomething) {
-            Log.warn("Subfolder '%s' inside 'fx' still contains files that are not recognised assets, so it was kept.", folder);
+            Log.warn("Subfolder '%s' still contains files that are not recognised assets, so it was kept.", folder);
         } else if (failure == null) {
-            Log.info("Removed illegal subfolder from 'fx' directory: %s", folder);
+            Log.info("Removed illegal subfolder: %s", folder);
         }
 
         if (failure != null) {

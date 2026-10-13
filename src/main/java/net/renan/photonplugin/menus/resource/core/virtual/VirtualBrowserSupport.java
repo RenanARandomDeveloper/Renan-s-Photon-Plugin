@@ -1,4 +1,4 @@
-package net.renan.photonplugin.menus.resource.common.fx.virtual;
+package net.renan.photonplugin.menus.resource.core.virtual;
 
 import net.renan.photonplugin.menus.resource.core.naming.FileNameRules;
 
@@ -24,7 +24,7 @@ public final class VirtualBrowserSupport {
         return result;
     }
 
-    public static List<File> selectedVirtualFolders(VirtualFXBrowserPanel browser, VirtualFolderStore store) {
+    public static List<File> selectedVirtualFolders(VirtualBrowserPanel browser, VirtualFolderStore store) {
         return browser.getSelectedFolders().stream()
                 .filter(store::isVirtualDir)
                 .collect(Collectors.toList());

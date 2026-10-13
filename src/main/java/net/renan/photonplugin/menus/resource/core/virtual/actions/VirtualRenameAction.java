@@ -1,14 +1,14 @@
-package net.renan.photonplugin.menus.resource.common.fx.actions;
+package net.renan.photonplugin.menus.resource.core.virtual.actions;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.blockly.FXListManager;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualBrowserSupport;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserPanel;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserSupport;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualFolderStore;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualResourceProfile;
 
 import javax.swing.*;
 import java.io.File;
@@ -25,7 +25,8 @@ public final class VirtualRenameAction {
     private VirtualRenameAction() {
     }
 
-    public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store) {
+    public static JButton build(MCreator mcreator, VirtualBrowserPanel browser, VirtualFolderStore store,
+                                VirtualResourceProfile profile) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.rename.file"), "16px_photon.rename");
         btn.addActionListener(e -> {
             List<File> fileItems = browser.getSelectedFiles();
@@ -56,7 +57,7 @@ public final class VirtualRenameAction {
                     }
                     if (outcome.isRenamed()) {
                         store.renameFile(item, outcome.dest());
-                        FXListManager.renameEntry(mcreator.getWorkspace().getWorkspaceFolder(), item, outcome.dest());
+                        profile.entryRenamed(mcreator.getWorkspace().getWorkspaceFolder(), item, outcome.dest());
                         counts[0]++;
                     }
                 }

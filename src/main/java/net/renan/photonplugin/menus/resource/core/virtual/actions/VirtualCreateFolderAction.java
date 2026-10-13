@@ -1,11 +1,11 @@
-package net.renan.photonplugin.menus.resource.common.fx.actions;
+package net.renan.photonplugin.menus.resource.core.virtual.actions;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.browser.FXBrowserPanel;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualFolderStore;
 
 import javax.swing.*;
 import java.io.File;

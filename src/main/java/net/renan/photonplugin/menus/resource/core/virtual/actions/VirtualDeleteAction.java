@@ -1,13 +1,13 @@
-package net.renan.photonplugin.menus.resource.common.fx.actions;
+package net.renan.photonplugin.menus.resource.core.virtual.actions;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.blockly.FXListManager;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualBrowserSupport;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserPanel;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.actions.DeleteAction;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserSupport;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualFolderStore;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualResourceProfile;
 
 import javax.swing.*;
 import java.io.File;
@@ -23,14 +23,16 @@ public final class VirtualDeleteAction {
     private VirtualDeleteAction() {
     }
 
-    public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store) {
+    public static JButton build(MCreator mcreator, VirtualBrowserPanel browser, VirtualFolderStore store,
+                                VirtualResourceProfile profile) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.delete.files"), "16px_photon.delete");
-        btn.addActionListener(e -> performDeleteSelected(mcreator, browser, store));
-        DeleteAction.bindDeleteKey(mcreator, browser, () -> performDeleteSelected(mcreator, browser, store));
+        btn.addActionListener(e -> performDeleteSelected(mcreator, browser, store, profile));
+        DeleteAction.bindDeleteKey(mcreator, browser, () -> performDeleteSelected(mcreator, browser, store, profile));
         return btn;
     }
 
-    private static void performDeleteSelected(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store) {
+    private static void performDeleteSelected(MCreator mcreator, VirtualBrowserPanel browser, VirtualFolderStore store,
+                                              VirtualResourceProfile profile) {
         List<File> fileTargets = browser.getSelectedFiles();
         List<File> folderTargets = VirtualBrowserSupport.selectedVirtualFolders(browser, store);
         if (fileTargets.isEmpty() && folderTargets.isEmpty()) {
@@ -129,7 +131,7 @@ public final class VirtualDeleteAction {
                     }
                 }
                 store.removeFiles(actuallyDeleted);
-                FXListManager.removeEntries(mcreator.getWorkspace().getWorkspaceFolder(), actuallyDeleted);
+                profile.entriesRemoved(mcreator.getWorkspace().getWorkspaceFolder(), actuallyDeleted);
             }
 
             for (VirtualDeleteFolderDecision decision : decisions) {
@@ -150,7 +152,7 @@ public final class VirtualDeleteAction {
                 }
                 if (!actuallyDeleted.isEmpty()) {
                     store.removeFiles(actuallyDeleted);
-                    FXListManager.removeEntries(mcreator.getWorkspace().getWorkspaceFolder(), actuallyDeleted);
+                    profile.entriesRemoved(mcreator.getWorkspace().getWorkspaceFolder(), actuallyDeleted);
                 }
                 if (allDeleted) {
                     store.deleteFolderAndFiles(folder);

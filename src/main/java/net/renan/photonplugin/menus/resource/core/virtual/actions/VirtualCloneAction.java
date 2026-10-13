@@ -1,11 +1,7 @@
-package net.renan.photonplugin.menus.resource.common.fx.actions;
+package net.renan.photonplugin.menus.resource.core.virtual.actions;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
-import net.renan.photonplugin.blockly.FXListManager;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualBrowserSupport;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFXBrowserPanel;
-import net.renan.photonplugin.menus.resource.common.fx.virtual.VirtualFolderStore;
 import net.renan.photonplugin.menus.resource.core.conflict.BulkConflictResolver;
 import net.renan.photonplugin.menus.resource.core.conflict.ConflictResolution;
 import net.renan.photonplugin.menus.resource.core.fs.FileOps;
@@ -13,6 +9,10 @@ import net.renan.photonplugin.menus.resource.core.naming.FileNameParts;
 import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import net.renan.photonplugin.menus.resource.core.support.MenuLog;
 import net.renan.photonplugin.menus.resource.core.support.MenuToolbars;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserPanel;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualBrowserSupport;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualFolderStore;
+import net.renan.photonplugin.menus.resource.core.virtual.VirtualResourceProfile;
 
 import javax.swing.*;
 import java.io.File;
@@ -32,8 +32,8 @@ public final class VirtualCloneAction {
     private VirtualCloneAction() {
     }
 
-    public static JButton build(MCreator mcreator, VirtualFXBrowserPanel browser, VirtualFolderStore store,
-                                Supplier<File> targetDirGetter) {
+    public static JButton build(MCreator mcreator, VirtualBrowserPanel browser, VirtualFolderStore store,
+                                Supplier<File> targetDirGetter, VirtualResourceProfile profile) {
         JButton btn = MenuToolbars.createToolbarButton(L10N.t("plugin.photon.resourcemenu.clone.element"), "16px_photon.clone");
         btn.addActionListener(e -> {
             List<File> sourceFiles = browser.getSelectedFiles();
@@ -103,7 +103,7 @@ public final class VirtualCloneAction {
                 if (!singleClonedFiles.isEmpty()) {
                     onEdtVoid(() -> {
                         if (store.isVirtualDir(currentDir)) store.assignToVirtualDir(singleClonedFiles, currentDir);
-                        FXListManager.addEntries(mcreator.getWorkspace().getWorkspaceFolder(), singleClonedFiles);
+                        profile.entriesAdded(mcreator.getWorkspace().getWorkspaceFolder(), singleClonedFiles);
                     });
                 }
 
@@ -151,7 +151,7 @@ public final class VirtualCloneAction {
                         String newRootFullPath = store.childPath(parentPath, cloneName);
                         onEdtVoid(() -> {
                             recreateSubtree(store, newRootFullPath, clonedByRelative);
-                            FXListManager.addEntries(mcreator.getWorkspace().getWorkspaceFolder(), allClonedFiles);
+                            profile.entriesAdded(mcreator.getWorkspace().getWorkspaceFolder(), allClonedFiles);
                         });
                     }
                     if (anyCloned && !subtreeFailed) counts[1]++;
