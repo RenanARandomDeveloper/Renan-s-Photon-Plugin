@@ -1,4 +1,4 @@
-package net.renan.photonplugin.menus.resource.forge;
+package net.renan.photonplugin.menus.resource.common;
 
 import net.mcreator.ui.MCreator;
 import net.mcreator.ui.component.TransparentToolBar;
@@ -17,9 +17,8 @@ import net.renan.photonplugin.menus.resource.core.naming.InvalidNameResolver;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Supplier;
 
 import static net.renan.photonplugin.menus.resource.core.actions.CloneAction.buildCloneButtonForBrowser;
@@ -40,22 +39,24 @@ import static net.renan.photonplugin.menus.resource.core.support.IconScaler.scal
 import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolBar;
 import static net.renan.photonplugin.menus.resource.core.support.MenuToolbars.createToolbarButton;
 
-public class ResourceMenuForgeShader {
+public class ResourceMenuShader {
     private static final String SHADER_FSH_EXTENSION = ".fsh";
     private static final String SHADER_JSON_EXTENSION = ".json";
+    private static final String SHADER_VSH_EXTENSION = ".vsh";
 
-    private ResourceMenuForgeShader() {
+    private ResourceMenuShader() {
     }
 
     public static JPanel createFXPanel(MCreator mcreator, Supplier<File> targetDirGetter) {
 
         FXBrowserPanel browser = new FXBrowserPanel(List.of(targetDirGetter), SHADER_FSH_EXTENSION,
-                Set.of(SHADER_FSH_EXTENSION, SHADER_JSON_EXTENSION),
+                Set.of(SHADER_FSH_EXTENSION, SHADER_JSON_EXTENSION, SHADER_VSH_EXTENSION),
                 file -> {
                     try {
-                        if (file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(SHADER_JSON_EXTENSION)) {
+                        String extension = shaderExtensionOf(file.getName());
+                        if (!SHADER_FSH_EXTENSION.equals(extension)) {
                             try {
-                                return scaleIconTo(UIRES.get("64px_photon.json"), 64);
+                                return scaleIconTo(UIRES.get("64px_photon" + extension), 64);
                             } catch (Exception ignored) {
                             }
                         }
@@ -86,20 +87,65 @@ public class ResourceMenuForgeShader {
         return panel;
     }
 
-    private static File[] showShaderImportDialog(MCreator mcreator) {
+    private static String shaderExtensionOf(String fileName) {
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(SHADER_JSON_EXTENSION)) return SHADER_JSON_EXTENSION;
+        if (lower.endsWith(SHADER_VSH_EXTENSION)) return SHADER_VSH_EXTENSION;
+        return SHADER_FSH_EXTENSION;
+    }
+
+    private static File[] showFshImportDialog(MCreator mcreator) {
         File[] selected = FileDialogs.getFileChooserDialog(mcreator, FileChooserType.OPEN, true, null,
-                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.shader.import.filter.fsh"), "*" + SHADER_FSH_EXTENSION),
-                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.shader.import.filter.json"), "*" + SHADER_JSON_EXTENSION),
-                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.shader.import.filter.both"),
-                        "*" + SHADER_FSH_EXTENSION, "*" + SHADER_JSON_EXTENSION));
+                new ExtensionFilter(L10N.t("plugin.photon.resourcemenu.shader.import.filter.fsh"), "*" + SHADER_FSH_EXTENSION));
         return selected != null ? selected : new File[0];
+    }
+
+    private static File promptCompanionFor(MCreator mcreator, File fshFile, String extension, String titleKey,
+                                           String promptKey, String filterKey) {
+        int choice = JOptionPane.showConfirmDialog(mcreator,
+                L10N.t(promptKey, fshFile.getName()),
+                L10N.t(titleKey),
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+        if (choice != JOptionPane.OK_OPTION) return null;
+
+        File[] selected = FileDialogs.getFileChooserDialog(mcreator, FileChooserType.OPEN, false, null,
+                new ExtensionFilter(L10N.t(filterKey), "*" + extension));
+        return selected != null && selected.length > 0 ? selected[0] : null;
+    }
+
+    private static File[] collectShaderSources(MCreator mcreator) {
+        File[] fshFiles = showFshImportDialog(mcreator);
+        List<File> sources = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (File fsh : fshFiles) {
+            addUnique(sources, seen, fsh);
+            addUnique(sources, seen, promptCompanionFor(mcreator, fsh, SHADER_JSON_EXTENSION,
+                    "plugin.photon.resourcemenu.shader.import.json.title",
+                    "plugin.photon.resourcemenu.shader.import.json.prompt",
+                    "plugin.photon.resourcemenu.shader.import.filter.json"));
+            addUnique(sources, seen, promptCompanionFor(mcreator, fsh, SHADER_VSH_EXTENSION,
+                    "plugin.photon.resourcemenu.shader.import.vsh.title",
+                    "plugin.photon.resourcemenu.shader.import.vsh.prompt",
+                    "plugin.photon.resourcemenu.shader.import.filter.vsh"));
+        }
+        return sources.toArray(new File[0]);
+    }
+
+    private static void addUnique(List<File> sources, Set<String> seen, File file) {
+        if (file != null && seen.add(file.getAbsolutePath())) {
+            sources.add(file);
+        }
+    }
+
+    private static boolean isStrictlyNamed(String fileName) {
+        return requiresStrictNaming(shaderExtensionOf(fileName));
     }
 
     private static JButton buildShaderImportButton(MCreator mcreator, FXBrowserPanel browser,
                                                    Supplier<File> targetDirGetter) {
         JButton button = createToolbarButton(L10N.t("plugin.photon.resourcemenu.import"), "16px_photon.import");
         button.addActionListener(e -> {
-            File[] selectedSources = showShaderImportDialog(mcreator);
+            File[] selectedSources = collectShaderSources(mcreator);
             if (selectedSources.length == 0) return;
 
             File navigatedDir = browser.getCurrentDir();
@@ -107,19 +153,13 @@ public class ResourceMenuForgeShader {
             File targetDir = (navigatedDir != null && navigatedDir.isDirectory()) ? navigatedDir : baseDir;
             if (!targetDir.exists()) targetDir.mkdirs();
 
-            boolean strictFsh = requiresStrictNaming(SHADER_FSH_EXTENSION);
-            boolean strictJson = requiresStrictNaming(SHADER_JSON_EXTENSION);
-
-            int conflictCount = (int) java.util.Arrays.stream(selectedSources)
+            int conflictCount = (int) Arrays.stream(selectedSources)
                     .filter(src -> new File(targetDir, src.getName()).exists())
                     .count();
             BulkConflictResolver overwriteResolver = new BulkConflictResolver(conflictCount, selectedSources.length >= 2);
 
-            int invalidNameCount = (int) java.util.Arrays.stream(selectedSources)
-                    .filter(src -> {
-                        boolean strict = src.getName().toLowerCase(java.util.Locale.ROOT).endsWith(SHADER_JSON_EXTENSION) ? strictJson : strictFsh;
-                        return strict && !isValidStrictFileName(src.getName());
-                    })
+            int invalidNameCount = (int) Arrays.stream(selectedSources)
+                    .filter(src -> isStrictlyNamed(src.getName()) && !isValidStrictFileName(src.getName()))
                     .count();
             InvalidNameResolver nameResolver = new InvalidNameResolver(invalidNameCount);
 
@@ -130,11 +170,8 @@ public class ResourceMenuForgeShader {
             runFileTaskInBackground(mcreator, () -> {
                 try {
                     for (File source : selectedSources) {
-                        boolean isJson = source.getName().toLowerCase(java.util.Locale.ROOT).endsWith(SHADER_JSON_EXTENSION);
-                        boolean strict = isJson ? strictJson : strictFsh;
-
                         String fileName = source.getName();
-                        if (strict) {
+                        if (isStrictlyNamed(fileName)) {
                             fileName = nameResolver.resolve(mcreator, fileName);
                             if (fileName == null) continue;
                         }

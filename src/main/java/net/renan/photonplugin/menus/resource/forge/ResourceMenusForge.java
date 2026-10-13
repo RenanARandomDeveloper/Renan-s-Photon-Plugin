@@ -4,6 +4,7 @@ import net.mcreator.ui.MCreator;
 import net.mcreator.ui.init.L10N;
 import net.renan.photonplugin.menus.resource.common.ResourceMenuFXProject;
 import net.renan.photonplugin.menus.resource.common.ResourceMenuResource;
+import net.renan.photonplugin.menus.resource.common.ResourceMenuShader;
 import net.renan.photonplugin.menus.resource.common.ResourceMenuTexture;
 import net.renan.photonplugin.menus.resource.common.fx.ResourceMenuFX;
 import net.renan.photonplugin.menus.resource.core.tabs.ResourceTabManager;
@@ -65,7 +66,7 @@ public class ResourceMenusForge {
                 ResourceMenuTexture.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_TEXTURE)));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.shader"),
-                ResourceMenuForgeShader.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_SHADER)));
+                ResourceMenuShader.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_SHADER)));
 
         tabs.addTab(L10N.t("plugin.photon.resourcemenu.tab.resource"),
                 ResourceMenuResource.createFXPanel(mc, () -> new File(mc.getWorkspace().getWorkspaceFolder(), TARGET_DIR_RESOURCE), true));

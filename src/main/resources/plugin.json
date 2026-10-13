@@ -9,7 +9,7 @@
   "javaplugin": "net.renan.photonplugin.Photon",
   "info": {
     "name": "Renan's Photon Plugin",
-    "version": "3.0",
+    "version": "3.0.1",
     "description": "Added support for the Photon API to MCreator",
     "author": "Renan",
     "pluginPageID": 120961,

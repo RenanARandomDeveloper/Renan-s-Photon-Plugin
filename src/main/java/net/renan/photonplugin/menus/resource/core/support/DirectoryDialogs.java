@@ -14,9 +14,6 @@ public final class DirectoryDialogs {
     private DirectoryDialogs() {
     }
 
-    /**
-     * Retorna a pasta escolhida ou null se o usuário cancelar.
-     */
     public static File chooseDirectory(Window parent) {
         boolean nativeChooser;
         try {

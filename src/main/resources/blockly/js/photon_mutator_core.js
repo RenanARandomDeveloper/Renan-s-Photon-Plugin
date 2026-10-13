@@ -5,6 +5,28 @@
 
     const KEY = "blockly.block.photon_mutator.";
 
+    const MIN_DISPLAY_LENGTH = 100;
+    try {
+        const FieldClass = typeof Blockly !== "undefined" ? Blockly.Field : null;
+        if (FieldClass && FieldClass.prototype && !FieldClass.prototype.photonDisplayLengthPatched_
+            && typeof FieldClass.prototype.getDisplayText_ === "function") {
+            const originalGetDisplayText = FieldClass.prototype.getDisplayText_;
+            FieldClass.prototype.getDisplayText_ = function () {
+                const previous = this.maxDisplayLength;
+                if (!(previous >= MIN_DISPLAY_LENGTH))
+                    this.maxDisplayLength = MIN_DISPLAY_LENGTH;
+                try {
+                    return originalGetDisplayText.apply(this, arguments);
+                } finally {
+                    this.maxDisplayLength = previous;
+                }
+            };
+            FieldClass.prototype.photonDisplayLengthPatched_ = true;
+        }
+    } catch (err) {
+        console.warn("[Photon] could not raise Blockly maxDisplayLength", err);
+    }
+
     function t(key) {
         try {
             if (typeof javabridge !== "undefined" && javabridge && typeof javabridge.t === "function")
